@@ -3,4 +3,8 @@
   <!-- Pure engine: base SDK only, no framework references, no packages (L2).
        Any ASP.NET/UnityEngine type showing up here must fail to compile. -->
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="TabletopCore.Engine.Tests" />
+  </ItemGroup>
+
 </Project>
