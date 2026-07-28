@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/Engine/">
+    <Project Path="src/Engine/TabletopCore.Engine.csproj" />
+  </Folder>
+  <Folder Name="/tests/" />
+  <Folder Name="/tests/Engine.Tests/">
+    <Project Path="tests/Engine.Tests/TabletopCore.Engine.Tests.csproj" />
+  </Folder>
+</Solution>

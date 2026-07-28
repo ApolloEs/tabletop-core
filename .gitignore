@@ -1,1 +1,11 @@
-"content/" 
+# Custom card content — local-only per clone, never committed (L15)
+content/
+
+# Build output
+bin/
+obj/
+
+# IDE
+.vs/
+.idea/
+*.user
