@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Game classes (L6). References only Engine's public surface — the
+       compiler certifies that games work through the action pipeline. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Engine\TabletopCore.Engine.csproj" />
+  </ItemGroup>
+
+</Project>

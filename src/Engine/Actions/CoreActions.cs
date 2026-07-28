@@ -20,7 +20,10 @@ public sealed record MoveCardAction(PlayerId Actor, CardInstanceId Card, ZoneId 
     {
         var card = state.GetCard(Card);
         var from = card.Zone;
-        state.MoveCard(card, state.GetZone(To), Position);
+        var to = state.GetZone(To);
+        state.MoveCard(card, to, Position);
+        if (to.Owner is { } owner)
+            card.Owner = owner;
         events.Add(new CardMoved(Card, from, To));
     }
 }
@@ -88,16 +91,60 @@ public sealed record DrawAction(PlayerId Actor, ZoneId From, ZoneId To, int Coun
     }
 }
 
-public sealed record EndTurnAction(PlayerId Actor) : GameAction(Actor)
+/// <summary>Ends the actor's turn, skipping the next <paramref name="Skip"/>
+/// players in turn order (skip cards, +2 victims).</summary>
+public sealed record EndTurnAction(PlayerId Actor, int Skip = 0) : GameAction(Actor)
 {
     internal override string? Validate(GameState state)
-        => state.Turn.ActivePlayer == Actor ? null : $"It is not {Actor}'s turn.";
+    {
+        if (state.Turn.ActivePlayer != Actor)
+            return $"It is not {Actor}'s turn.";
+        if (Skip < 0)
+            return "Skip count cannot be negative.";
+        return null;
+    }
 
     internal override void Apply(GameState state, List<GameEvent> events)
     {
         events.Add(new TurnEnded(Actor, state.Turn.TurnNumber));
-        state.Turn.ActivePlayer = state.TurnSystem.GetNextPlayer(state);
+        for (int i = 0; i <= Skip; i++)
+        {
+            state.Turn.ActivePlayer = state.TurnSystem.GetNextPlayer(state);
+            if (i < Skip)
+                events.Add(new TurnSkipped(state.Turn.ActivePlayer));
+        }
         state.Turn.TurnNumber++;
         events.Add(new TurnStarted(state.Turn.ActivePlayer, state.Turn.TurnNumber));
+    }
+}
+
+/// <summary>Sets a named counter on a zone — the general home for table
+/// state games need (current color, pending draws, scores, chips).</summary>
+public sealed record SetCounterAction(PlayerId Actor, ZoneId Zone, string Name, int Value) : GameAction(Actor)
+{
+    internal override string? Validate(GameState state)
+    {
+        if (!state.Zones.ContainsKey(Zone))
+            return $"Unknown zone '{Zone}'.";
+        if (string.IsNullOrWhiteSpace(Name))
+            return "Counter name cannot be empty.";
+        return null;
+    }
+
+    internal override void Apply(GameState state, List<GameEvent> events)
+    {
+        state.GetZone(Zone).SetCounter(Name, Value);
+        events.Add(new CounterChanged(Zone, Name, Value));
+    }
+}
+
+public sealed record SetTurnDirectionAction(PlayerId Actor, TurnDirection Direction) : GameAction(Actor)
+{
+    internal override string? Validate(GameState state) => null;
+
+    internal override void Apply(GameState state, List<GameEvent> events)
+    {
+        state.Turn.Direction = Direction;
+        events.Add(new TurnDirectionChanged(Direction));
     }
 }

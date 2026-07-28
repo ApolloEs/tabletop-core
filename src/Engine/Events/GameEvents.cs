@@ -22,3 +22,9 @@ public sealed record CardDrawn(PlayerId Player, CardInstanceId Card, ZoneId From
 public sealed record TurnEnded(PlayerId Player, int TurnNumber) : GameEvent;
 
 public sealed record TurnStarted(PlayerId Player, int TurnNumber) : GameEvent;
+
+public sealed record TurnSkipped(PlayerId Player) : GameEvent;
+
+public sealed record TurnDirectionChanged(TurnDirection Direction) : GameEvent;
+
+public sealed record CounterChanged(ZoneId Zone, string Name, int Value) : GameEvent;
