@@ -16,4 +16,7 @@
   <Folder Name="/tests/Games.Tests/">
     <Project Path="tests/Games.Tests/TabletopCore.Games.Tests.csproj" />
   </Folder>
+  <Folder Name="/tests/Protocol.Tests/">
+    <Project Path="tests/Protocol.Tests/TabletopCore.Protocol.Tests.csproj" />
+  </Folder>
 </Solution>
