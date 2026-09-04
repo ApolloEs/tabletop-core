@@ -6,6 +6,9 @@
   <Folder Name="/src/Games/">
     <Project Path="src/Games/TabletopCore.Games.csproj" />
   </Folder>
+  <Folder Name="/src/Protocol/">
+    <Project Path="src/Protocol/TabletopCore.Protocol.csproj" />
+  </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Engine.Tests/">
     <Project Path="tests/Engine.Tests/TabletopCore.Engine.Tests.csproj" />

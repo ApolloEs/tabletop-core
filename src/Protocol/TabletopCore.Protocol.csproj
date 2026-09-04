@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The wire contract: JSON converters, polymorphic registration, and the
+       payload DTOs both the server and every client share. The ONLY assembly
+       that knows JSON exists — Engine stays serialization-free, and wire-shape
+       churn (naming, discriminators) never recompiles the engine.
+       Referencing Games directly is accepted debt (L5): per-game wire-type
+       registration gets extracted into the framework after game #2. -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Engine\TabletopCore.Engine.csproj" />
+    <ProjectReference Include="..\Games\TabletopCore.Games.csproj" />
+  </ItemGroup>
+
+</Project>

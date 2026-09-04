@@ -65,4 +65,28 @@ public class TableActionTests
 
         Assert.Equal(alice.Id, state.GetCard(card).Owner);
     }
+
+    [Fact]
+    public void MovingIntoAnUnownedZoneClearsTheOwner()
+    {
+        var state = TestGame.Create(seed: 1, out var alice, out _);
+        var card = state.GetZone(TestGame.Deck).Cards[0];
+        state.Apply(new MoveCardAction(alice.Id, card, TestGame.HandOf(alice)));
+
+        state.Apply(new MoveCardAction(alice.Id, card, TestGame.Discard));
+
+        Assert.Null(state.GetCard(card).Owner);
+    }
+
+    [Fact]
+    public void DrawingIntoAnUnownedZoneClearsTheOwner()
+    {
+        var state = TestGame.Create(seed: 1, out var alice, out _);
+        var card = state.GetZone(TestGame.Deck).Cards[^1];
+        state.Apply(new MoveCardAction(alice.Id, card, TestGame.HandOf(alice)));
+
+        state.Apply(new DrawAction(alice.Id, TestGame.HandOf(alice), TestGame.Discard));
+
+        Assert.Null(state.GetCard(card).Owner);
+    }
 }

@@ -58,6 +58,21 @@ public class AgonySetupTests
     }
 
     [Fact]
+    public void CardIdToDefinitionBindingDiffersPerSeed()
+    {
+        // Guards the id-leak fix: instance ids must not decode to definitions
+        // via a fixed creation order. If a refactor reverts AgonyDeck to
+        // creating cards in generation order, both games below would get the
+        // identical id->definition mapping and this test fails.
+        var first = NewGame(out _, out _, seed: 7);
+        var second = NewGame(out _, out _, seed: 8);
+
+        bool anyDiffers = first.Cards.Keys.Any(
+            id => first.GetCard(id).Definition != second.GetCard(id).Definition);
+        Assert.True(anyDiffers, "id->definition binding is identical across seeds — creation order is fixed again");
+    }
+
+    [Fact]
     public void SetupIsDeterministicPerSeed()
     {
         var first = NewGame(out var playersA, out _, seed: 7);

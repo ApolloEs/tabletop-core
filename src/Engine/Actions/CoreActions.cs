@@ -3,7 +3,9 @@ using TabletopCore.Engine.Events;
 namespace TabletopCore.Engine.Actions;
 
 /// <summary>Moves a card to a zone. Position null appends to the top;
-/// otherwise the card is inserted at that index (clamped).</summary>
+/// otherwise the card is inserted at that index (clamped).
+/// Ownership follows the destination: an owned zone adopts the card,
+/// an unowned zone (discard, table) clears the previous owner.</summary>
 public sealed record MoveCardAction(PlayerId Actor, CardInstanceId Card, ZoneId To, int? Position = null)
     : GameAction(Actor)
 {
@@ -22,8 +24,7 @@ public sealed record MoveCardAction(PlayerId Actor, CardInstanceId Card, ZoneId 
         var from = card.Zone;
         var to = state.GetZone(To);
         state.MoveCard(card, to, Position);
-        if (to.Owner is { } owner)
-            card.Owner = owner;
+        card.Owner = to.Owner;
         events.Add(new CardMoved(Card, from, To));
     }
 }
@@ -60,7 +61,7 @@ public sealed record ShuffleAction(PlayerId Actor, ZoneId Zone) : GameAction(Act
 }
 
 /// <summary>Takes cards off the top of one zone onto the top of another.
-/// If the target zone has an owner, the drawn cards become theirs.</summary>
+/// Ownership follows the destination zone, as with MoveCardAction.</summary>
 public sealed record DrawAction(PlayerId Actor, ZoneId From, ZoneId To, int Count = 1) : GameAction(Actor)
 {
     internal override string? Validate(GameState state)
@@ -84,8 +85,7 @@ public sealed record DrawAction(PlayerId Actor, ZoneId From, ZoneId To, int Coun
         {
             var card = state.GetCard(from.CardsInternal[^1]);
             state.MoveCard(card, to, position: null);
-            if (to.Owner is { } owner)
-                card.Owner = owner;
+            card.Owner = to.Owner;
             events.Add(new CardDrawn(Actor, card.Id, From, To));
         }
     }

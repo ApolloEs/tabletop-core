@@ -22,31 +22,47 @@ public static class AgonyDeck
 
     public static void Populate(GameState state, ZoneId deck, bool includeSwapRotate)
     {
+        var pending = new List<CardDefinitionId>();
+
         foreach (var color in Enum.GetValues<AgonyColor>())
         {
             string c = AgonyColors.Name(color);
             string display = char.ToUpperInvariant(c[0]) + c[1..];
 
             for (int n = 0; n <= 9; n++)
-                Add(state, deck, $"{c}-{n}", $"{display} {n}", copies: n == 0 ? 1 : 2, c, n.ToString(), n);
+                Add(state, pending, $"{c}-{n}", $"{display} {n}", copies: n == 0 ? 1 : 2, c, n.ToString(), n);
 
-            Add(state, deck, $"{c}-skip", $"{display} Skip", 2, c, SymbolSkip);
-            Add(state, deck, $"{c}-reverse", $"{display} Reverse", 2, c, SymbolReverse);
-            Add(state, deck, $"{c}-draw2", $"{display} +2", 2, c, SymbolDrawTwo);
+            Add(state, pending, $"{c}-skip", $"{display} Skip", 2, c, SymbolSkip);
+            Add(state, pending, $"{c}-reverse", $"{display} Reverse", 2, c, SymbolReverse);
+            Add(state, pending, $"{c}-draw2", $"{display} +2", 2, c, SymbolDrawTwo);
 
             if (includeSwapRotate)
             {
-                Add(state, deck, $"{c}-swap", $"{display} Swap", 1, c, SymbolSwap);
-                Add(state, deck, $"{c}-rotate", $"{display} Rotate", 1, c, SymbolRotate);
+                Add(state, pending, $"{c}-swap", $"{display} Swap", 1, c, SymbolSwap);
+                Add(state, pending, $"{c}-rotate", $"{display} Rotate", 1, c, SymbolRotate);
             }
         }
 
-        Add(state, deck, "wild", "Wild", 4, WildColor, SymbolWild);
-        Add(state, deck, "wild4", "Wild +4", 4, WildColor, SymbolWildFour);
+        Add(state, pending, "wild", "Wild", 4, WildColor, SymbolWild);
+        Add(state, pending, "wild4", "Wild +4", 4, WildColor, SymbolWildFour);
+
+        // Instances are created in seeded-random order, not generation order.
+        // A CardInstanceId's binding to its definition is decided at creation,
+        // so a fixed creation order would make ids decodable by anyone with
+        // this (public) source — every exposed id of a hidden card would leak
+        // the exact card. Shuffling here makes ids meaningless per game while
+        // staying deterministic per seed (replay-safe).
+        for (int i = pending.Count - 1; i > 0; i--)
+        {
+            int j = state.Rng.NextInt(i + 1);
+            (pending[i], pending[j]) = (pending[j], pending[i]);
+        }
+        foreach (var definition in pending)
+            state.CreateCard(definition, deck);
     }
 
     private static void Add(
-        GameState state, ZoneId deck, string id, string name, int copies,
+        GameState state, List<CardDefinitionId> pending, string id, string name, int copies,
         string color, string symbol, int? number = null)
     {
         var properties = new Dictionary<string, PropertyValue>
@@ -57,8 +73,9 @@ public static class AgonyDeck
         if (number is { } n)
             properties["number"] = n;
 
-        state.AddDefinition(new CardDefinition(new CardDefinitionId(id), name, properties: properties));
+        var definitionId = new CardDefinitionId(id);
+        state.AddDefinition(new CardDefinition(definitionId, name, properties: properties));
         for (int i = 0; i < copies; i++)
-            state.CreateCard(new CardDefinitionId(id), deck);
+            pending.Add(definitionId);
     }
 }
