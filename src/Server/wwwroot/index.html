@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agony — table server</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100dvh; display: grid; place-items: center;
+      font-family: system-ui, sans-serif;
+      background: #f4f1ea; color: #232b26;
+    }
+    @media (prefers-color-scheme: dark) {
+      body { background: #171c18; color: #e5e9e4; }
+    }
+    main { text-align: center; padding: 24px; }
+    h1 { font-size: 1.6rem; margin: 0 0 8px; }
+    p { margin: 4px 0; opacity: 0.75; }
+    .card {
+      display: inline-block; padding: 10px 22px; margin-bottom: 18px;
+      border: 2px solid currentColor; border-radius: 12px;
+      font-size: 2.2rem; font-weight: 700; transform: rotate(-4deg);
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="card">A♠</div>
+    <h1>The table is up</h1>
+    <p>TabletopCore server — reachable from this device.</p>
+    <p>The game client will live here (checkpoint 5).</p>
+  </main>
+</body>
+</html>

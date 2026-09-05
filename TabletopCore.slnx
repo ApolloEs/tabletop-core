@@ -9,6 +9,9 @@
   <Folder Name="/src/Protocol/">
     <Project Path="src/Protocol/TabletopCore.Protocol.csproj" />
   </Folder>
+  <Folder Name="/src/Server/">
+    <Project Path="src/Server/TabletopCore.Server.csproj" />
+  </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Engine.Tests/">
     <Project Path="tests/Engine.Tests/TabletopCore.Engine.Tests.csproj" />
@@ -18,5 +21,8 @@
   </Folder>
   <Folder Name="/tests/Protocol.Tests/">
     <Project Path="tests/Protocol.Tests/TabletopCore.Protocol.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tests/Server.Tests/">
+    <Project Path="tests/Server.Tests/TabletopCore.Server.Tests.csproj" />
   </Folder>
 </Solution>

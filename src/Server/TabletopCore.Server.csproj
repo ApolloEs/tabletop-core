@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- The authoritative room server: SignalR hub in front, one actor task
+       per room owning GameState + IGame behind it. Transport plumbing
+       (framing, keepalive, send serialization) is SignalR's; sessions, acks,
+       and per-player projection are ours — SignalR reconnects the pipe,
+       never the seat. wwwroot/ is the browser client (no build step). -->
+
+  <ItemGroup>
+    <ProjectReference Include="..\Protocol\TabletopCore.Protocol.csproj" />
+    <ProjectReference Include="..\Games\TabletopCore.Games.csproj" />
+  </ItemGroup>
+
+</Project>

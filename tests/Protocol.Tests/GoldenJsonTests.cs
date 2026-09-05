@@ -90,6 +90,38 @@ public class GoldenJsonTests
     }
 
     [Fact]
+    public void HubPayloadShapes()
+    {
+        Assert.Equal(
+            """{"sessionToken":"tok123","playerId":1,"seat":1,"roomCode":"KWXZ","protocolVersion":1}""",
+            Json(new WelcomePayload("tok123", new PlayerId(1), 1, "KWXZ", 1)));
+        Assert.Equal(
+            """{"moveId":4,"move":{"type":"agony.drawCard"}}""",
+            Json(new MovePayload(4, new DrawCard())));
+        Assert.Equal(
+            """{"moveId":4,"version":17}""",
+            Json(new MoveAcceptedPayload(4, 17)));
+        Assert.Equal(
+            """{"moveId":5,"error":"It is not your turn."}""",
+            Json(new MoveRejectedPayload(5, "It is not your turn.")));
+        Assert.Equal(
+            """{"seat":1,"connected":false}""",
+            Json(new PlayerStatusPayload(1, false)));
+        // The Web defaults escape HTML-sensitive characters (' → ').
+        // Pinned deliberately: JS JSON.parse decodes these transparently,
+        // and the strict encoder is the safe default for text that may be
+        // injected into pages. Player-typed strings cross the wire escaped.
+        string errorJson = Json(new ErrorPayload("roomNotFound", "No room 'QQQQ'."));
+        Assert.Equal("{\"code\":\"roomNotFound\",\"message\":\"No room \\u0027QQQQ\\u0027.\"}", errorJson);
+        Assert.Equal(
+            """{"players":[{"seat":0,"name":"Ava","connected":true,"isHost":true}],"config":{"stackDrawTwo":true,"swapRotateCards":false,"jumpIn":false},"canStart":false}""",
+            Json(new LobbyPayload(
+                [new LobbyPlayer(0, "Ava", Connected: true, IsHost: true)],
+                new AgonyConfig { StackDrawTwo = true },
+                CanStart: false)));
+    }
+
+    [Fact]
     public void CatalogEntryShape()
     {
         var entry = new CardCatalogEntry(
