@@ -13,7 +13,10 @@ public sealed class Session
 {
     public string Token { get; } = Guid.NewGuid().ToString("N");
 
-    public required int Seat { get; init; }
+    /// <summary>Mutable only for lobby re-seating after an expired seat is
+    /// removed; frozen in practice once the game starts.</summary>
+    public required int Seat { get; set; }
+
     public required string DisplayName { get; init; }
 
     /// <summary>Assigned when the game starts (players are added to the
@@ -25,6 +28,14 @@ public sealed class Session
 
     public string? ConnectionId { get; set; }
     public bool Connected => ConnectionId is not null;
+
+    /// <summary>When the connection died (room-clock time); null while
+    /// connected. Drives the grace sweep.</summary>
+    public DateTimeOffset? DisconnectedAt { get; set; }
+
+    /// <summary>Set when the grace period ran out. The seat still resumes —
+    /// abandonment informs the other players, it doesn't evict.</summary>
+    public bool Abandoned { get; set; }
 
     /// <summary>Ack bookkeeping: move ids are client-chosen, monotonic from 1.
     /// A resubmitted id is answered with the stored reply and never re-applied

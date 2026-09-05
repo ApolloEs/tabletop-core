@@ -105,8 +105,8 @@ public class GoldenJsonTests
             """{"moveId":5,"error":"It is not your turn."}""",
             Json(new MoveRejectedPayload(5, "It is not your turn.")));
         Assert.Equal(
-            """{"seat":1,"connected":false}""",
-            Json(new PlayerStatusPayload(1, false)));
+            """{"seat":1,"connected":false,"abandoned":false}""",
+            Json(new PlayerStatusPayload(1, false, false)));
         // The Web defaults escape HTML-sensitive characters (' → ').
         // Pinned deliberately: JS JSON.parse decodes these transparently,
         // and the strict encoder is the safe default for text that may be

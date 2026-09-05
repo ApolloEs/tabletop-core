@@ -31,3 +31,11 @@ internal sealed record SubmitMoveCommand(string ConnectionId, MovePayload Payloa
 
 internal sealed record DisconnectCommand(string ConnectionId, TaskCompletionSource<bool> Done)
     : RoomCommand(ConnectionId, Done);
+
+internal sealed record EndGameCommand(string ConnectionId, TaskCompletionSource<bool> Done)
+    : RoomCommand(ConnectionId, Done);
+
+/// <summary>Posted by the room's own timer, not a client — hence no real
+/// connection. Runs the grace/GC sweep inside the actor like everything
+/// else, so time-driven logic gets the same single-threaded guarantees.</summary>
+internal sealed record SweepCommand(TaskCompletionSource<bool> Done) : RoomCommand("", Done);

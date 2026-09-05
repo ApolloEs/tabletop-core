@@ -20,10 +20,19 @@ public enum RoomPhase { Lobby, Playing, Finished }
 /// </summary>
 public sealed class Room
 {
+    /// <summary>A dropped seat waits this long before others are told it's
+    /// abandoned; a room where every seat is disconnected this long is
+    /// garbage-collected.</summary>
+    public static readonly TimeSpan GracePeriod = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan SweepPeriod = TimeSpan.FromSeconds(10);
+
     private readonly Channel<RoomCommand> _commands = Channel.CreateUnbounded<RoomCommand>();
     private readonly IClientSender _sender;
     private readonly Action<string, Room> _registerToken;
     private readonly Func<ulong> _seedSource;
+    private readonly TimeProvider _time;
+    private readonly Action<Room>? _onDefunct;
+    private readonly ITimer _sweepTimer;
     private readonly List<Session> _sessions = [];
 
     private AgonyConfig _config = new();
@@ -37,14 +46,34 @@ public sealed class Room
     /// <param name="seedSource">Overridable so tests can pin the deal;
     /// production rooms draw a random seed. Either way the seed never
     /// crosses the wire.</param>
-    public Room(string code, IClientSender sender, Action<string, Room> registerToken, Func<ulong>? seedSource = null)
+    /// <param name="time">Injectable clock — the grace sweep is tested with
+    /// a fake TimeProvider, never with real waiting.</param>
+    /// <param name="onDefunct">Called after this room garbage-collects
+    /// itself so the registry can drop its maps.</param>
+    public Room(
+        string code,
+        IClientSender sender,
+        Action<string, Room> registerToken,
+        Func<ulong>? seedSource = null,
+        TimeProvider? time = null,
+        Action<Room>? onDefunct = null)
     {
         Code = code;
         _sender = sender;
         _registerToken = registerToken;
         _seedSource = seedSource ?? (() => (ulong)Random.Shared.NextInt64());
+        _time = time ?? TimeProvider.System;
+        _onDefunct = onDefunct;
+        // The timer only posts a command; the sweep itself runs in the actor
+        // loop with the same single-threaded guarantees as every handler.
+        _sweepTimer = _time.CreateTimer(
+            _ => _commands.Writer.TryWrite(new SweepCommand(NewDone())),
+            null, SweepPeriod, SweepPeriod);
         _ = Task.Run(RunAsync);
     }
+
+    private static TaskCompletionSource<bool> NewDone()
+        => new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // ---- The public surface: wrap, post, await. Nothing more. ----
 
@@ -66,9 +95,12 @@ public sealed class Room
     public Task<bool> Disconnect(string connectionId)
         => Post(done => new DisconnectCommand(connectionId, done));
 
+    public Task<bool> EndGame(string connectionId)
+        => Post(done => new EndGameCommand(connectionId, done));
+
     private Task<bool> Post(Func<TaskCompletionSource<bool>, RoomCommand> make)
     {
-        var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var done = NewDone();
         if (!_commands.Writer.TryWrite(make(done)))
             done.TrySetResult(false);
         return done.Task;
@@ -90,6 +122,8 @@ public sealed class Room
                     StartCommand c => await HandleStart(c),
                     SubmitMoveCommand c => await HandleSubmitMove(c),
                     DisconnectCommand c => await HandleDisconnect(c),
+                    EndGameCommand c => await HandleEndGame(c),
+                    SweepCommand => await HandleSweep(),
                     _ => false,
                 };
                 command.Done.TrySetResult(handled);
@@ -141,6 +175,8 @@ public sealed class Room
                 "This seat was resumed from another connection.");
 
         session.ConnectionId = c.ConnectionId;
+        session.DisconnectedAt = null;
+        session.Abandoned = false;
         await SendWelcome(session);
 
         if (Phase == RoomPhase.Lobby)
@@ -249,10 +285,68 @@ public sealed class Room
             return true; // never joined, or already replaced by a resume
 
         session.ConnectionId = null;
+        session.DisconnectedAt = _time.GetUtcNow();
         if (Phase == RoomPhase.Lobby)
             await BroadcastLobby();
         else
             await BroadcastPlayerStatus(session);
+        return true;
+    }
+
+    private async Task<bool> HandleEndGame(EndGameCommand c)
+    {
+        if (FindByConnection(c.ConnectionId) is not { } session)
+            return await Fail(c, "notInRoom", "Join a room first.");
+        if (!session.IsHost)
+            return await Fail(c, "hostOnly", "Only the host can end the game.");
+        if (Phase != RoomPhase.Playing)
+            return await Fail(c, "notPlaying", "There is no running game to end.");
+
+        Phase = RoomPhase.Finished;
+        foreach (var s in ConnectedSessions())
+            await _sender.SendAsync(s.ConnectionId!, Wire.State, BuildState(s, []));
+        return true;
+    }
+
+    private async Task<bool> HandleSweep()
+    {
+        var now = _time.GetUtcNow();
+
+        // Lobby seats that never came back simply leave the table (later
+        // joiners keep their seats; the host seat never expires, so seat 0
+        // stays meaningful).
+        if (Phase == RoomPhase.Lobby)
+        {
+            int removed = _sessions.RemoveAll(s =>
+                !s.IsHost && !s.Connected && now - s.DisconnectedAt > GracePeriod);
+            if (removed > 0)
+            {
+                for (int i = 0; i < _sessions.Count; i++)
+                    _sessions[i].Seat = i;
+                await BroadcastLobby();
+            }
+        }
+        else
+        {
+            // Mid-game seats are never evicted — the hand must survive a
+            // resume — but the grace expiring is announced once, and the
+            // host may end a game stalled on an abandoned turn.
+            foreach (var session in _sessions.Where(s =>
+                !s.Connected && !s.Abandoned && now - s.DisconnectedAt > GracePeriod))
+            {
+                session.Abandoned = true;
+                await BroadcastPlayerStatus(session);
+            }
+        }
+
+        // A room nobody has touched for a whole grace period shuts down.
+        if (_sessions.Count == 0 ||
+            _sessions.All(s => !s.Connected && now - s.DisconnectedAt > GracePeriod))
+        {
+            _commands.Writer.TryComplete();
+            _sweepTimer.Dispose();
+            _onDefunct?.Invoke(this);
+        }
         return true;
     }
 
@@ -268,9 +362,10 @@ public sealed class Room
         => new(
             _version,
             StateProjector.ProjectFor(_state!, viewer.PlayerId),
-            _game!.GetLegalMoves(_state!, viewer.PlayerId),
+            Phase == RoomPhase.Finished ? [] : _game!.GetLegalMoves(_state!, viewer.PlayerId),
             EventProjector.ProjectFor(rawEvents, viewer.PlayerId),
-            _game.GetWinner(_state!));
+            _game!.GetWinner(_state!),
+            Finished: Phase == RoomPhase.Finished);
 
     private Task SendWelcome(Session session)
         => _sender.SendAsync(session.ConnectionId!, Wire.Welcome,
@@ -288,7 +383,7 @@ public sealed class Room
 
     private async Task BroadcastPlayerStatus(Session about)
     {
-        var payload = new PlayerStatusPayload(about.Seat, about.Connected);
+        var payload = new PlayerStatusPayload(about.Seat, about.Connected, about.Abandoned);
         foreach (var s in ConnectedSessions().Where(s => s != about))
             await _sender.SendAsync(s.ConnectionId!, Wire.PlayerStatus, payload);
     }

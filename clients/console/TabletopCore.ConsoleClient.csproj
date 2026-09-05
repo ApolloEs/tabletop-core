@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The over-the-wire console client (L16): connects via SignalR exactly
+       as a browser will, one terminal per player. Deliberately thin - xUnit
+       carries verification; this exists to DEMONSTRATE the wire (and to be
+       the chaos rig: kill it mid-turn, resume, watch the dedupe work). -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseAppHost>false</UseAppHost>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Protocol\TabletopCore.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

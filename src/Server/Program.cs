@@ -16,6 +16,7 @@ builder.Services
     // payloads are byte-identical to what the golden tests freeze.
     .AddJsonProtocol(options => options.PayloadSerializerOptions = WireJson.Options);
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IClientSender, SignalRClientSender>();
 builder.Services.AddSingleton<RoomRegistry>();
 

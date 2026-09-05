@@ -12,6 +12,10 @@
   <Folder Name="/src/Server/">
     <Project Path="src/Server/TabletopCore.Server.csproj" />
   </Folder>
+  <Folder Name="/clients/" />
+  <Folder Name="/clients/console/">
+    <Project Path="clients/console/TabletopCore.ConsoleClient.csproj" />
+  </Folder>
   <Folder Name="/tests/" />
   <Folder Name="/tests/Engine.Tests/">
     <Project Path="tests/Engine.Tests/TabletopCore.Engine.Tests.csproj" />

@@ -42,6 +42,9 @@ public sealed class HubIntegrationTests : IAsyncLifetime
         private ErrorPayload? _error;
         public long NextMoveId;
         public readonly List<StatePayload> AllStates = [];
+        private readonly List<MoveAcceptedPayload> _acks = [];
+        public IReadOnlyList<MoveAcceptedPayload> Acks { get { lock (_gate) return _acks.ToArray(); } }
+        public void AddAck(MoveAcceptedPayload ack) { lock (_gate) _acks.Add(ack); }
 
         public WelcomePayload? Welcome { get { lock (_gate) return _welcome; } set { lock (_gate) _welcome = value; } }
         public StatePayload? State
@@ -68,6 +71,7 @@ public sealed class HubIntegrationTests : IAsyncLifetime
         connection.On<WelcomePayload>(Wire.Welcome, p => player.Welcome = p);
         connection.On<StatePayload>(Wire.State, p => player.State = p);
         connection.On<MoveRejectedPayload>(Wire.MoveRejected, p => player.Rejected = p);
+        connection.On<MoveAcceptedPayload>(Wire.MoveAccepted, p => player.AddAck(p));
         connection.On<ErrorPayload>(Wire.Error, p => player.Error = p);
         connection.On<CardCatalog>(Wire.Catalog, _ => { });
         connection.On<LobbyPayload>(Wire.Lobby, _ => { });
@@ -167,6 +171,45 @@ public sealed class HubIntegrationTests : IAsyncLifetime
         Assert.Equal(bo.Welcome.Seat, reborn.Welcome!.Seat);
         Assert.Equal(handBefore, OwnHandIds(reborn.State!));
         Assert.Null(reborn.Error);
+    }
+
+    [Fact]
+    public async Task AResentMoveAfterResumeIsAppliedExactlyOnce()
+    {
+        var (ava, bo) = await StartedGame();
+        var players = new[] { ava, bo };
+        var active = players.Single(p => p.State!.View.Turn.ActivePlayer == p.State.View.Viewer);
+        var idle = players.Single(p => p != active);
+
+        // Move #1 applies normally and is acked at version 2.
+        var move = new MovePayload(1, active.State!.LegalMoves[0]);
+        await active.Connection.InvokeAsync("submitMove", move, TestContext.Current.CancellationToken);
+        await WaitFor(() => active.Acks.Any(a => a.MoveId == 1), "first ack");
+        long versionAfterMove = active.Acks.Single(a => a.MoveId == 1).Version;
+
+        // The connection dies with the client unsure its move arrived…
+        await active.Connection.StopAsync(TestContext.Current.CancellationToken);
+
+        // …so after resuming, the client resends the SAME payload.
+        var reborn = await NewPlayer("reborn");
+        await reborn.Connection.InvokeAsync("resume", active.Welcome!.SessionToken, TestContext.Current.CancellationToken);
+        await WaitFor(() => reborn.State is not null, "resumed state");
+        await reborn.Connection.InvokeAsync("submitMove", move, TestContext.Current.CancellationToken);
+        await WaitFor(() => reborn.Acks.Any(a => a.MoveId == 1), "re-ack");
+
+        // The re-ack is the STORED reply — same version, nothing re-applied.
+        Assert.Equal(versionAfterMove, reborn.Acks.Single(a => a.MoveId == 1).Version);
+        Assert.Equal(versionAfterMove, reborn.State!.Version);
+
+        // And the game continues normally from there.
+        await WaitFor(() => idle.State!.Version == versionAfterMove, "idle caught up");
+        if (idle.State!.LegalMoves.Count > 0)
+        {
+            await idle.Connection.InvokeAsync("submitMove",
+                new MovePayload(1, idle.State.LegalMoves[0]), TestContext.Current.CancellationToken);
+            await WaitFor(() => idle.Acks.Count > 0, "next player's ack");
+            Assert.Equal(versionAfterMove + 1, idle.Acks[^1].Version);
+        }
     }
 
     private static IReadOnlyList<int> OwnHandIds(StatePayload state)

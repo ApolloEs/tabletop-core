@@ -33,6 +33,9 @@ public sealed class GameHub(RoomRegistry rooms) : Hub
     public Task SubmitMove(MovePayload payload)
         => rooms.SubmitMove(Context.ConnectionId, payload);
 
+    public Task EndGame()
+        => rooms.EndGame(Context.ConnectionId);
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         await rooms.Disconnect(Context.ConnectionId);

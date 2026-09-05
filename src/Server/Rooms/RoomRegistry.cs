@@ -12,7 +12,7 @@ namespace TabletopCore.Server.Rooms;
 /// game decisions; concurrency here is only map bookkeeping, which is why
 /// ConcurrentDictionary suffices while rooms get a full actor.
 /// </summary>
-public sealed class RoomRegistry(IClientSender sender)
+public sealed class RoomRegistry(IClientSender sender, TimeProvider? time = null)
 {
     // No 0/O/1/I/L: codes get read aloud across a table.
     private const string CodeAlphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -38,7 +38,10 @@ public sealed class RoomRegistry(IClientSender sender)
             {
                 code = NewCode();
             } while (_byCode.ContainsKey(code));
-            room = new Room(code, sender, (token, r) => _byToken[token] = r);
+            room = new Room(code, sender,
+                registerToken: (token, r) => _byToken[token] = r,
+                time: time,
+                onDefunct: Evict);
             _byCode[code] = room;
         }
 
@@ -77,10 +80,28 @@ public sealed class RoomRegistry(IClientSender sender)
     public Task SubmitMove(string connectionId, MovePayload payload)
         => WithRoom(connectionId, room => room.SubmitMove(connectionId, payload));
 
+    public Task EndGame(string connectionId)
+        => WithRoom(connectionId, room => room.EndGame(connectionId));
+
     public async Task Disconnect(string connectionId)
     {
         if (_byConnection.TryRemove(connectionId, out var room))
             await room.Disconnect(connectionId);
+    }
+
+    /// <summary>A room announced its own shutdown (everyone gone past the
+    /// grace period): drop every map entry that points at it.</summary>
+    private void Evict(Room defunct)
+    {
+        foreach (var (code, room) in _byCode)
+            if (room == defunct)
+                _byCode.TryRemove(code, out _);
+        foreach (var (token, room) in _byToken)
+            if (room == defunct)
+                _byToken.TryRemove(token, out _);
+        foreach (var (connection, room) in _byConnection)
+            if (room == defunct)
+                _byConnection.TryRemove(connection, out _);
     }
 
     private async Task WithRoom(string connectionId, Func<Room, Task<bool>> action)

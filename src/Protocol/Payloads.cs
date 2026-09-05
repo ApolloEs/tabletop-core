@@ -47,18 +47,23 @@ public sealed record MovePayload(long MoveId, GameMove Move);
 /// <summary>The per-recipient snapshot pushed after every applied move —
 /// a client renders from this alone. Events are that move's redacted slice,
 /// optional flavor for animation. LegalMoves are the viewer's own (empty
-/// when it isn't their turn).</summary>
+/// when it isn't their turn). Finished covers both endings: a winner, or
+/// the host ending a stalled game (Winner stays null then).</summary>
 public sealed record StatePayload(
     long Version,
     PlayerView View,
     IReadOnlyList<GameMove> LegalMoves,
     IReadOnlyList<GameEvent> Events,
-    PlayerId? Winner);
+    PlayerId? Winner,
+    bool Finished);
 
 public sealed record MoveAcceptedPayload(long MoveId, long Version);
 
 public sealed record MoveRejectedPayload(long MoveId, string Error);
 
-public sealed record PlayerStatusPayload(int Seat, bool Connected);
+/// <summary>Abandoned means the disconnect grace period ran out — the seat
+/// still resumes if its player returns, but others shouldn't hold their
+/// breath, and the host gains the option to end the game.</summary>
+public sealed record PlayerStatusPayload(int Seat, bool Connected, bool Abandoned);
 
 public sealed record ErrorPayload(string Code, string Message);
