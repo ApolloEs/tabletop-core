@@ -2,34 +2,72 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agony — table server</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body {
-      margin: 0; min-height: 100dvh; display: grid; place-items: center;
-      font-family: system-ui, sans-serif;
-      background: #f4f1ea; color: #232b26;
-    }
-    @media (prefers-color-scheme: dark) {
-      body { background: #171c18; color: #e5e9e4; }
-    }
-    main { text-align: center; padding: 24px; }
-    h1 { font-size: 1.6rem; margin: 0 0 8px; }
-    p { margin: 4px 0; opacity: 0.75; }
-    .card {
-      display: inline-block; padding: 10px 22px; margin-bottom: 18px;
-      border: 2px solid currentColor; border-radius: 12px;
-      font-size: 2.2rem; font-weight: 700; transform: rotate(-4deg);
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171c18">
+  <title>Agony</title>
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <main>
-    <div class="card">A♠</div>
-    <h1>The table is up</h1>
-    <p>TabletopCore server — reachable from this device.</p>
-    <p>The game client will live here (checkpoint 5).</p>
-  </main>
+  <div id="banner" hidden></div>
+
+  <!-- Join -->
+  <section id="screen-join">
+    <h1>Agony</h1>
+    <label>your name
+      <input id="name" maxlength="20" autocomplete="nickname" placeholder="Ava">
+    </label>
+    <button id="create" class="primary">Create a table</button>
+    <div class="row">
+      <input id="code" maxlength="4" placeholder="CODE" autocapitalize="characters" autocomplete="off">
+      <button id="join">Join</button>
+    </div>
+    <button id="resume" hidden>Resume last game</button>
+  </section>
+
+  <!-- Lobby -->
+  <section id="screen-lobby" hidden>
+    <p class="kicker">room code — read it out loud</p>
+    <div id="room-code"></div>
+    <ul id="lobby-players"></ul>
+    <div id="lobby-config">
+      <label><input type="checkbox" id="cfg-stack"> stack +2 on +2</label>
+      <label><input type="checkbox" id="cfg-swap"> swap &amp; rotate cards</label>
+    </div>
+    <button id="start" class="primary" hidden>Deal the cards</button>
+    <p id="lobby-hint"></p>
+  </section>
+
+  <!-- Table -->
+  <section id="screen-table" hidden>
+    <div id="opponents"></div>
+    <div id="center">
+      <button id="deck" class="card back"><span id="deck-count"></span></button>
+      <div id="discard"></div>
+      <div id="table-info"></div>
+    </div>
+    <div id="turn-banner"></div>
+    <div id="hand"></div>
+    <div id="actions">
+      <button id="pass" hidden>Pass</button>
+      <button id="end-game" hidden>End the stalled game</button>
+    </div>
+  </section>
+
+  <!-- Wild color picker -->
+  <div id="picker" hidden>
+    <p>declare a color</p>
+    <div class="row">
+      <button class="pick c-red" data-color="red"></button>
+      <button class="pick c-yellow" data-color="yellow"></button>
+      <button class="pick c-green" data-color="green"></button>
+      <button class="pick c-blue" data-color="blue"></button>
+    </div>
+    <button id="picker-cancel">cancel</button>
+  </div>
+
+  <div id="toast" hidden></div>
+
+  <script src="js/lib/signalr.min.js"></script>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
