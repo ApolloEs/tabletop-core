@@ -27,9 +27,12 @@ public static class Wire
 
 /// <summary>Reply to a successful create/join/resume. The session token is
 /// the client's identity from here on — it outlives the connection, and
-/// presenting it to Resume after a drop restores this seat.</summary>
+/// presenting it to Resume after a drop restores this seat. LastMoveId is
+/// where this seat's move-id sequence stands, so a client restarted from
+/// scratch resumes the sequence instead of colliding with the dedupe (a
+/// fresh id 1 would read as a resend of an old move).</summary>
 public sealed record WelcomePayload(
-    string SessionToken, PlayerId PlayerId, int Seat, string RoomCode, int ProtocolVersion);
+    string SessionToken, PlayerId PlayerId, int Seat, string RoomCode, int ProtocolVersion, long LastMoveId);
 
 public sealed record LobbyPlayer(int Seat, string Name, bool Connected, bool IsHost);
 

@@ -369,7 +369,8 @@ public sealed class Room
 
     private Task SendWelcome(Session session)
         => _sender.SendAsync(session.ConnectionId!, Wire.Welcome,
-            new WelcomePayload(session.Token, session.PlayerId, session.Seat, Code, Wire.ProtocolVersion));
+            new WelcomePayload(session.Token, session.PlayerId, session.Seat, Code,
+                Wire.ProtocolVersion, session.LastMoveId));
 
     private async Task BroadcastLobby()
     {

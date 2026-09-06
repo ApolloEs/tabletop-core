@@ -44,7 +44,14 @@ void Print(string text) { lock (gate) Console.WriteLine(text); }
 
 connection.On<WelcomePayload>(Wire.Welcome, w =>
 {
-    lock (gate) { token = w.SessionToken; amHost = w.Seat == 0; }
+    lock (gate)
+    {
+        token = w.SessionToken;
+        amHost = w.Seat == 0;
+        // Resume the move-id sequence where this seat left off — a restarted
+        // process starting back at 1 would collide with the server's dedupe.
+        nextMoveId = Math.Max(nextMoveId, w.LastMoveId + 1);
+    }
     Print($"\n== room {w.RoomCode} — you are seat {w.Seat} ==");
     Print($"   resume token (save this): {w.SessionToken}");
 });
@@ -141,12 +148,14 @@ while (Console.ReadLine() is { } line)
             case var _ when int.TryParse(line, out int pick):
                 StatePayload? state; MovePayload? pending;
                 lock (gate) { state = latest; pending = inFlight; }
-                if (state is null || pick < 1 || pick > state.LegalMoves.Count)
-                    { Print("  no such move"); break; }
+                if (state is null || state.LegalMoves.Count == 0)
+                    { Print("  not your turn"); break; }
+                if (pick < 1 || pick > state.LegalMoves.Count)
+                    { Print($"  no such move (1–{state.LegalMoves.Count})"); break; }
                 if (pending is not null)
                     { Print("  still waiting for the last move's ack"); break; }
-                var payload = new MovePayload(nextMoveId++, state.LegalMoves[pick - 1]);
-                lock (gate) inFlight = payload;
+                MovePayload payload;
+                lock (gate) payload = inFlight = new MovePayload(nextMoveId++, state.LegalMoves[pick - 1]);
                 await connection.InvokeAsync("submitMove", payload);
                 break;
             case "":

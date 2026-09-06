@@ -10,7 +10,8 @@ namespace TabletopCore.Games.Agony;
 /// re-flipped until it is a number card; Wild +4 has no challenge rule and no
 /// "only when you cannot match" restriction; emptying your hand wins
 /// immediately (a final +2's debt is never collected); after drawing you may
-/// play only the drawn card.
+/// play any playable card — the drawn one included — or pass (you just can't
+/// draw twice).
 /// </summary>
 public sealed class AgonyGame : IGame
 {
@@ -112,8 +113,9 @@ public sealed class AgonyGame : IGame
                 return MoveResult.Rejected("Only a +2 can answer a +2.");
         }
 
-        if (table.GetCounter(HasDrawnCounter) == 1 && card.Id.Value != table.GetCounter(DrawnCardCounter))
-            return MoveResult.Rejected("After drawing you may only play the drawn card, or pass.");
+        // Having drawn does not narrow what you may play: any playable card
+        // (the drawn one included) is fine. DrawnCardCounter stays set purely
+        // as a client hint ("this is the card you just drew").
 
         if (isWild)
         {
@@ -250,9 +252,9 @@ public sealed class AgonyGame : IGame
 
         if (table.GetCounter(HasDrawnCounter) == 1)
         {
-            var drawn = new CardInstanceId(table.GetCounter(DrawnCardCounter));
-            if (hand.Contains(drawn) && IsPlayable(state, drawn))
-                moves.AddRange(PlayVariants(state, drawn));
+            // Same play options as before the draw, plus whatever the drawn
+            // card added — only the second draw is off the table.
+            moves.AddRange(hand.Where(id => IsPlayable(state, id)).SelectMany(id => PlayVariants(state, id)));
             moves.Add(new PassTurn());
             return moves;
         }

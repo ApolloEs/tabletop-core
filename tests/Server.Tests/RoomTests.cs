@@ -187,6 +187,23 @@ public class RoomTests
     }
 
     [Fact]
+    public async Task WelcomeCarriesTheMoveIdSequenceSoARestartedClientContinuesIt()
+    {
+        var (room, sender) = await StartedGame();
+        string active = ActiveConnection(sender);
+        var move = sender.Last<StatePayload>(active).LegalMoves[0];
+        Assert.True(await room.SubmitMove(active, new MovePayload(1, move)));
+
+        string token = sender.Last<WelcomePayload>(active).SessionToken;
+        await room.Disconnect(active);
+        Assert.True(await room.Resume("R", token));
+
+        // A restarted client reads this and starts at lastMoveId + 1 —
+        // starting back at 1 would read as a resend and dedupe-deadlock.
+        Assert.Equal(1, sender.Last<WelcomePayload>("R").LastMoveId);
+    }
+
+    [Fact]
     public async Task ResumingWithAForeignTokenFails()
     {
         var (room, sender) = await StartedGame();

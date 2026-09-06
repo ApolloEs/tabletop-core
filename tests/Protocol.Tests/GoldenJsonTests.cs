@@ -93,8 +93,8 @@ public class GoldenJsonTests
     public void HubPayloadShapes()
     {
         Assert.Equal(
-            """{"sessionToken":"tok123","playerId":1,"seat":1,"roomCode":"KWXZ","protocolVersion":1}""",
-            Json(new WelcomePayload("tok123", new PlayerId(1), 1, "KWXZ", 1)));
+            """{"sessionToken":"tok123","playerId":1,"seat":1,"roomCode":"KWXZ","protocolVersion":1,"lastMoveId":5}""",
+            Json(new WelcomePayload("tok123", new PlayerId(1), 1, "KWXZ", 1, 5)));
         Assert.Equal(
             """{"moveId":4,"move":{"type":"agony.drawCard"}}""",
             Json(new MovePayload(4, new DrawCard())));

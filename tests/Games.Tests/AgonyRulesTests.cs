@@ -167,7 +167,7 @@ public class AgonyRulesTests
     }
 
     [Fact]
-    public void AfterDrawingOnlyTheDrawnCardOrPassIsAllowed()
+    public void DrawingKeepsEveryPlayOptionButForbidsASecondDraw()
     {
         var state = NewGame(out var players, out var game);
         SetTop(state, players[0], "red-3");
@@ -177,11 +177,15 @@ public class AgonyRulesTests
         Must(game.TryMove(state, players[0].Id, new DrawCard()));
         Assert.Equal(handBefore + 1, Hand(state, players[0]).Count);
 
-        Assert.False(game.TryMove(state, players[0].Id, new PlayCard(other.Id)).Success);
+        // The options from before the draw are all still open…
+        Assert.Contains(new PlayCard(other.Id), game.GetLegalMoves(state, players[0].Id));
+        Assert.Contains(new PassTurn(), game.GetLegalMoves(state, players[0].Id));
+        // …only drawing again is off the table.
         Assert.False(game.TryMove(state, players[0].Id, new DrawCard()).Success);
 
-        Must(game.TryMove(state, players[0].Id, new PassTurn()));
+        Must(game.TryMove(state, players[0].Id, new PlayCard(other.Id)));
         Assert.Equal(players[1].Id, state.Turn.ActivePlayer);
+        Assert.Equal(0, state.GetZone(AgonyGame.TableZone).GetCounter(AgonyGame.HasDrawnCounter));
     }
 
     [Fact]
