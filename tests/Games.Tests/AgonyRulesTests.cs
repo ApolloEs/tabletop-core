@@ -167,6 +167,25 @@ public class AgonyRulesTests
     }
 
     [Fact]
+    public void AFruitlessDrawNeverPassesTheTurnByItself()
+    {
+        // The anti-tell rule: an automatic pass that fires when nothing is
+        // playable would be a 1-bit oracle on the hand (firing = "he has
+        // nothing", not firing = "he is saving something"). The turn moves
+        // only on an explicit Pass, no matter how hopeless the hand.
+        var state = NewGame(out var players, out var game);
+        SetTop(state, players[0], "red-3");
+
+        Must(game.TryMove(state, players[0].Id, new DrawCard()));
+
+        Assert.Equal(players[0].Id, state.Turn.ActivePlayer);
+        Assert.Contains(new PassTurn(), game.GetLegalMoves(state, players[0].Id));
+
+        Must(game.TryMove(state, players[0].Id, new PassTurn()));
+        Assert.Equal(players[1].Id, state.Turn.ActivePlayer);
+    }
+
+    [Fact]
     public void DrawingKeepsEveryPlayOptionButForbidsASecondDraw()
     {
         var state = NewGame(out var players, out var game);

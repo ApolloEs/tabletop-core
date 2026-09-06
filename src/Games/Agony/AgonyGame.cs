@@ -19,10 +19,14 @@ public sealed class AgonyGame : IGame
     public static readonly ZoneId DiscardZone = new("discard");
     public static readonly ZoneId TableZone = new("table");
 
+    // Table counters are PUBLIC — everything here is knowledge every player
+    // legitimately has (they all saw the draw happen, the color declared,
+    // the debt accumulate). Nothing hand-private may ever live on the table:
+    // a "which card was drawn" counter briefly did, and let opponents tell
+    // "played the drawn card" from "played a card he was holding all along".
     public const string ActiveColorCounter = "activeColor";
     public const string PendingDrawCounter = "pendingDraw";
     public const string HasDrawnCounter = "hasDrawn";
-    public const string DrawnCardCounter = "drawnCard";
 
     private readonly AgonyConfig _config;
 
@@ -114,8 +118,8 @@ public sealed class AgonyGame : IGame
         }
 
         // Having drawn does not narrow what you may play: any playable card
-        // (the drawn one included) is fine. DrawnCardCounter stays set purely
-        // as a client hint ("this is the card you just drew").
+        // (the drawn one included) is fine. The server never says which card
+        // was drawn — the drawer's own client can tell by diffing its hand.
 
         if (isWild)
         {
@@ -210,9 +214,12 @@ public sealed class AgonyGame : IGame
             return MoveResult.Rejected("There is nothing left to draw — play a card or pass.");
 
         Must(state.Apply(new DrawAction(player, DeckZone, HandOf(state, player), 1)));
-        var drawn = state.GetZone(HandOf(state, player)).Cards[^1];
         Must(state.Apply(new SetCounterAction(player, TableZone, HasDrawnCounter, 1)));
-        Must(state.Apply(new SetCounterAction(player, TableZone, DrawnCardCounter, drawn.Value)));
+        // Deliberately NO end-of-turn here, and no automatic pass anywhere:
+        // an auto-pass that fires when nothing is playable is a 1-bit oracle
+        // on the hand (firing = "has nothing", not firing = "saving
+        // something"). Passing is always an explicit move, so the time it
+        // takes carries only human noise.
         return MoveResult.Applied(EventsSince(state, mark));
     }
 
@@ -300,10 +307,7 @@ public sealed class AgonyGame : IGame
     private static void ClearDrawFlags(GameState state, PlayerId player, Zone table)
     {
         if (table.GetCounter(HasDrawnCounter) != 0)
-        {
             Must(state.Apply(new SetCounterAction(player, TableZone, HasDrawnCounter, 0)));
-            Must(state.Apply(new SetCounterAction(player, TableZone, DrawnCardCounter, 0)));
-        }
     }
 
     private static void RecycleDiscardIfNeeded(GameState state, PlayerId player, int needed)
