@@ -15,6 +15,7 @@ export function createStore() {
     seatStatus: new Map(),   // seat -> { connected, abandoned }
     lastError: null,         // ErrorPayload, cleared on next successful message
     awaitingAck: false,      // one-in-flight mirror, for disabling inputs
+    protocolMismatch: null,  // { page, server } when the two sides disagree
   };
 
   function publish() {

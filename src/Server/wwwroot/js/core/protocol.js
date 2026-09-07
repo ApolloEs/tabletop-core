@@ -3,7 +3,11 @@
 // golden tests are the arbiter — this file follows them, never the reverse.
 
 export const HUB_PATH = "/game";
-export const PROTOCOL_VERSION = 1;
+
+// Must match Wire.ProtocolVersion in src/Protocol — a Server.Tests case
+// asserts these two literals agree, so a wire change can't land on one side
+// only. Checked against `welcome` at runtime as well.
+export const PROTOCOL_VERSION = 2;
 
 // Hub -> client method names (what we subscribe to).
 export const ON = {

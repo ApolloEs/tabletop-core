@@ -5,7 +5,7 @@
 // one-in-flight rule, and resends the unacked move so the server's dedupe
 // can make delivery exactly-once. A future framework keeps this file.
 
-import { HUB_PATH, ON, CALL } from "./protocol.js";
+import { HUB_PATH, ON, CALL, PROTOCOL_VERSION } from "./protocol.js";
 
 export function createGameConnection({ signalR, store, storage, baseUrl = "" }) {
   let token = null;
@@ -20,6 +20,12 @@ export function createGameConnection({ signalR, store, storage, baseUrl = "" }) 
     .build();
 
   hub.on(ON.welcome, w => {
+    // A server from before a wire change silently ignores fields it doesn't
+    // know, which shows up as controls that snap back instead of an error.
+    // Say so out loud rather than letting the player debug a ghost.
+    if (w.protocolVersion !== PROTOCOL_VERSION)
+      store.update({ protocolMismatch: { page: PROTOCOL_VERSION, server: w.protocolVersion } });
+
     token = w.sessionToken;
     try { storage?.setItem("agony.sessionToken", w.sessionToken); } catch { /* best effort */ }
     // Resume the move-id sequence where this seat left off — a fresh page

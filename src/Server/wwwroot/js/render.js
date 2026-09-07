@@ -85,6 +85,15 @@ export function initRenderer(store, connection) {
 
   function renderBanner(state) {
     const banner = $("banner");
+    if (state.protocolMismatch) {
+      const { page, server } = state.protocolMismatch;
+      banner.textContent =
+        `This page speaks protocol v${page} but the table is running v${server}. ` +
+        `Restart the server, then reload — house rules will look broken until you do.`;
+      banner.className = "lost";
+      banner.hidden = false;
+      return;
+    }
     const messages = {
       reconnecting: "connection lost — reconnecting…",
       connecting: "connecting…",

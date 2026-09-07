@@ -77,6 +77,23 @@ public class RoundTripTests
     }
 
     [Fact]
+    public void HouseRulesDeserializeFromTheFieldNamesTheBrowserSends()
+    {
+        // The exact bytes render.js puts on the wire. A rename on one side
+        // only would leave every unknown field at its default — which looks
+        // like a lobby toggle that snaps back, not like an error.
+        var config = JsonSerializer.Deserialize<AgonyConfig>(
+            """{"stackDrawCards":true,"swapRotateCards":true,"playForPlacings":true,"jumpIn":false}""",
+            WireJson.Options);
+
+        Assert.NotNull(config);
+        Assert.True(config.StackDrawCards);
+        Assert.True(config.SwapRotateCards);
+        Assert.True(config.PlayForPlacings);
+        Assert.False(config.JumpIn);
+    }
+
+    [Fact]
     public void UnknownMoveDiscriminatorIsRejected()
         => Assert.Throws<JsonException>(() =>
             JsonSerializer.Deserialize<GameMove>("""{"type":"agony.becomeTheDealer"}""", WireJson.Options));

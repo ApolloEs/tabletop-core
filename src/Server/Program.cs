@@ -25,7 +25,14 @@ var app = builder.Build();
 // Binding comes from env/config (ASPNETCORE_URLS or --urls) — nothing
 // hardcoded, so the same binary serves localhost, LAN, or a public box.
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // The client ships straight from wwwroot with no build step and no
+    // content hashes in filenames, so a heuristically cached copy can
+    // outlive a server update and then talk the wrong protocol. Revalidate
+    // every request — ETags keep that a cheap 304.
+    OnPrepareResponse = context => context.Context.Response.Headers.CacheControl = "no-cache",
+});
 app.MapHub<GameHub>("/game");
 
 app.Run();

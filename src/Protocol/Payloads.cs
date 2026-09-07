@@ -13,7 +13,13 @@ namespace TabletopCore.Protocol;
 /// </summary>
 public static class Wire
 {
-    public const int ProtocolVersion = 1;
+    /// <summary>Bump on every incompatible wire change (a renamed field, a
+    /// reshaped payload). Clients compare it against the value in `welcome`
+    /// and refuse to play quietly on a mismatch: an old server silently
+    /// ignoring a renamed field looks exactly like a broken UI otherwise.
+    /// v2: AgonyConfig.stackDrawTwo → stackDrawCards + playForPlacings,
+    /// StatePayload.winner → standings, welcome gained lastMoveId.</summary>
+    public const int ProtocolVersion = 2;
 
     public const string Welcome = "welcome";
     public const string Lobby = "lobby";
