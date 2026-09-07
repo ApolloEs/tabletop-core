@@ -61,9 +61,11 @@ connection.On<LobbyPayload>(Wire.Lobby, p =>
     lock (gate) { lobby = p; config = p.Config; }
     var seats = p.Players.Select(x =>
         $"{x.Name}{(x.IsHost ? "*" : "")}{(x.Connected ? "" : " (away)")}");
-    Print($"\n[lobby] {string.Join(", ", seats)}   stack+2:{OnOff(p.Config.StackDrawTwo)}  swap/rotate:{OnOff(p.Config.SwapRotateCards)}");
+    Print($"\n[lobby] {string.Join(", ", seats)}   stacking:{OnOff(p.Config.StackDrawCards)}  swap/rotate:{OnOff(p.Config.SwapRotateCards)}  placings:{OnOff(p.Config.PlayForPlacings)}");
     if (amHost)
-        Print(p.CanStart ? "type: start | stack | swap" : "waiting for players… (type: stack | swap)");
+        Print(p.CanStart
+            ? "type: start | stack | swap | placings"
+            : "waiting for players… (type: stack | swap | placings)");
 });
 
 connection.On<CardCatalog>(Wire.Catalog, c =>
@@ -139,11 +141,20 @@ while (Console.ReadLine() is { } line)
             case "end":
                 await connection.InvokeAsync("endGame");
                 break;
+            case "again":
+                await connection.InvokeAsync("rematch");
+                break;
+            case "lobby":
+                await connection.InvokeAsync("backToLobby");
+                break;
             case "stack":
-                await connection.InvokeAsync("setConfig", config with { StackDrawTwo = !config.StackDrawTwo });
+                await connection.InvokeAsync("setConfig", config with { StackDrawCards = !config.StackDrawCards });
                 break;
             case "swap":
                 await connection.InvokeAsync("setConfig", config with { SwapRotateCards = !config.SwapRotateCards });
+                break;
+            case "placings":
+                await connection.InvokeAsync("setConfig", config with { PlayForPlacings = !config.PlayForPlacings });
                 break;
             case var _ when int.TryParse(line, out int pick):
                 StatePayload? state; MovePayload? pending;
@@ -161,7 +172,7 @@ while (Console.ReadLine() is { } line)
             case "":
                 break;
             default:
-                Print("  commands: <move number> | start | stack | swap | end | quit");
+                Print("  commands: <move number> | start | stack | swap | placings | end | again | lobby | quit");
                 break;
         }
     }

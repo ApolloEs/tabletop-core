@@ -114,10 +114,10 @@ public class GoldenJsonTests
         string errorJson = Json(new ErrorPayload("roomNotFound", "No room 'QQQQ'."));
         Assert.Equal("{\"code\":\"roomNotFound\",\"message\":\"No room \\u0027QQQQ\\u0027.\"}", errorJson);
         Assert.Equal(
-            """{"players":[{"seat":0,"name":"Ava","connected":true,"isHost":true}],"config":{"stackDrawTwo":true,"swapRotateCards":false,"jumpIn":false},"canStart":false}""",
+            """{"players":[{"seat":0,"name":"Ava","connected":true,"isHost":true}],"config":{"stackDrawCards":true,"swapRotateCards":false,"playForPlacings":false,"jumpIn":false},"canStart":false}""",
             Json(new LobbyPayload(
                 [new LobbyPlayer(0, "Ava", Connected: true, IsHost: true)],
-                new AgonyConfig { StackDrawTwo = true },
+                new AgonyConfig { StackDrawCards = true },
                 CanStart: false)));
     }
 

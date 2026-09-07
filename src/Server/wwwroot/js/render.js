@@ -2,13 +2,17 @@
 // future framework would replace. It reads the store, draws, and calls the
 // connection's API; it owns zero game or session state of its own.
 
-import { zoneById, ownHand, isMyTurn, playVariantsFor, canDraw, canPass } from "./core/protocol.js";
+import {
+  MOVE, COUNTER, zoneById, ownHand, isMyTurn,
+  playVariantsFor, canDraw, canPass, pendingDraw, placingOf,
+} from "./core/protocol.js";
 
 const COLORS = ["red", "yellow", "green", "blue"];
 const GLYPHS = {
   skip: "⊘", reverse: "⇄", draw2: "+2",
   swap: "⇆", rotate: "⟳", wild: "✦", wild4: "+4",
 };
+const ORDINALS = ["1st", "2nd", "3rd"];
 
 const $ = id => document.getElementById(id);
 
@@ -22,13 +26,17 @@ export function initRenderer(store, connection) {
   $("resume").onclick = () => connection.resume();
   $("start").onclick = () => connection.startGame();
   $("end-game").onclick = () => connection.endGame();
-  $("pass").onclick = () => submitFirst(m => m.type === "agony.passTurn");
-  $("deck").onclick = () => submitFirst(m => m.type === "agony.drawCard");
+  $("again").onclick = () => connection.rematch();
+  $("to-lobby").onclick = () => connection.backToLobby();
+  $("pass").onclick = () => submitFirst(m => m.type === MOVE.passTurn);
+  $("deck").onclick = () => submitFirst(m => m.type === MOVE.drawCard);
+  $("take-debt").onclick = () => submitFirst(m => m.type === MOVE.drawCard);
 
-  $("cfg-stack").onchange = $("cfg-swap").onchange = () =>
+  $("cfg-stack").onchange = $("cfg-swap").onchange = $("cfg-placings").onchange = () =>
     connection.setConfig({
-      stackDrawTwo: $("cfg-stack").checked,
+      stackDrawCards: $("cfg-stack").checked,
       swapRotateCards: $("cfg-swap").checked,
+      playForPlacings: $("cfg-placings").checked,
       jumpIn: false,
     });
 
@@ -72,6 +80,7 @@ export function initRenderer(store, connection) {
     renderToast(state);
     if (state.screen === "lobby" && state.lobby) renderLobby(state);
     if (state.screen === "table" && state.game) renderTable(state);
+    $("result").hidden = !(state.screen === "table" && state.game?.finished);
   });
 
   function renderBanner(state) {
@@ -102,9 +111,10 @@ export function initRenderer(store, connection) {
       </li>`).join("");
 
     const amHost = welcome?.seat === 0;
-    $("cfg-stack").checked = lobby.config.stackDrawTwo;
+    $("cfg-stack").checked = lobby.config.stackDrawCards;
     $("cfg-swap").checked = lobby.config.swapRotateCards;
-    $("cfg-stack").disabled = $("cfg-swap").disabled = !amHost;
+    $("cfg-placings").checked = lobby.config.playForPlacings;
+    $("cfg-stack").disabled = $("cfg-swap").disabled = $("cfg-placings").disabled = !amHost;
     $("start").hidden = !amHost;
     $("start").disabled = !lobby.canStart;
     $("lobby-hint").textContent = amHost
@@ -115,7 +125,12 @@ export function initRenderer(store, connection) {
   function renderTable(state) {
     const { game, catalog, welcome, seatStatus } = state;
     const view = game.view;
-    const busy = state.awaitingAck || game.finished;
+    const mine = isMyTurn(game) && !game.finished;
+    const sending = state.awaitingAck;
+    // Two different reasons a card can't be tapped, and the player must be
+    // able to tell them apart: it isn't your turn, or your move is in the air.
+    const busy = sending || game.finished || !mine;
+    const pending = pendingDraw(view);
 
     // Opponents strip (everyone but me, seat order).
     $("opponents").innerHTML = view.players
@@ -123,8 +138,9 @@ export function initRenderer(store, connection) {
       .map(p => {
         const status = seatStatus.get(p.seat) ?? { connected: true, abandoned: false };
         const dot = status.abandoned ? "gone" : status.connected ? "" : "off";
-        const active = p.id === view.turn.activePlayer ? "active" : "";
-        const count = handCountOf(view, p.id);
+        const active = p.id === view.turn.activePlayer && !game.finished ? "active" : "";
+        const placing = placingOf(game, p.id);
+        const count = placing ? ORDINALS[placing - 1] ?? `${placing}th` : handCountOf(view, p.id);
         return `<div class="opponent ${active}">
           <span class="dot ${dot}"></span>
           <span>${escapeHtml(p.displayName)}</span>
@@ -135,29 +151,39 @@ export function initRenderer(store, connection) {
     // Center: deck, discard top, table info.
     const deck = zoneById(view, "deck");
     $("deck-count").textContent = deck.cardCount;
-    $("deck").disabled = busy || !canDraw(game);
+
+    // Facing a debt, the normal draw is blocked and replaced by an explicit
+    // "take" button that names the price — never auto-taken, even when the
+    // player has nothing to answer with.
+    const takeAvailable = mine && !sending && pending > 0 && canDraw(game);
+    $("take-debt").hidden = !(mine && pending > 0);
+    $("take-debt").textContent = `Take +${pending}`;
+    $("take-debt").disabled = !takeAvailable;
+    $("deck").disabled = pending > 0 || busy || !canDraw(game);
 
     const discard = zoneById(view, "discard");
     const top = discard.cards?.at(-1);
     $("discard").innerHTML = top ? cardFace(catalog.get(top.definition), "") : "";
 
     const table = zoneById(view, "table");
-    const activeColor = COLORS[table.counters.activeColor ?? 0];
-    const pending = table.counters.pendingDraw ?? 0;
+    const activeColor = COLORS[table.counters[COUNTER.activeColor] ?? 0];
     const arrow = view.turn.direction === "forward" ? "↻" : "↺";
     $("table-info").innerHTML = `
       <span class="info-chip"><span class="swatch c-${activeColor}"></span>${activeColor}</span>
       <span class="info-chip">${arrow} play direction</span>
       ${pending > 0 ? `<span class="info-chip debt">+${pending} pending</span>` : ""}`;
 
-    // Turn banner.
-    const mine = isMyTurn(game);
+    // Turn banner — the single clearest signal on the screen.
     const banner = $("turn-banner");
     banner.className = mine ? "mine" : "";
-    banner.textContent = game.finished ? "" :
-      mine ? "your turn" : `waiting for ${nameOf(view, view.turn.activePlayer)}…`;
+    banner.textContent = game.finished ? ""
+      : sending ? "sending…"
+      : mine ? (pending > 0 ? `answer the +${pending} or take it` : "your turn")
+      : `waiting for ${nameOf(view, view.turn.activePlayer)}…`;
 
-    // My hand: playable cards raised and enabled.
+    // My hand: playable cards raised and enabled; a whole idle hand is dimmed
+    // so "not my turn" never reads as "the app broke".
+    $("hand").classList.toggle("idle", !mine && !game.finished);
     $("hand").innerHTML = (ownHand(view).cards ?? []).map(card => {
       const playable = !busy && playVariantsFor(game, card.id).length > 0;
       return cardFace(catalog.get(card.definition), `data-card="${card.id}"`,
@@ -168,16 +194,39 @@ export function initRenderer(store, connection) {
     $("end-game").hidden = !(welcome?.seat === 0 && !game.finished &&
       [...seatStatus.values()].some(s => s.abandoned));
 
-    // Winner / ended overlay.
-    document.querySelector(".winner")?.remove();
-    if (game.finished) {
-      const text = game.winner !== undefined && game.winner !== null
-        ? (game.winner === view.viewer ? "You win! 🎉" : `${nameOf(view, game.winner)} wins`)
-        : "The host ended the game";
-      const overlay = document.createElement("div");
-      overlay.className = "winner";
-      overlay.textContent = text;
-      document.body.appendChild(overlay);
+    if (game.finished) renderResult(state);
+  }
+
+  function renderResult(state) {
+    const { game, welcome } = state;
+    const view = game.view;
+    const amHost = welcome?.seat === 0;
+    const standings = game.standings;
+
+    const myPlacing = placingOf(game, view.viewer);
+    $("result-title").textContent =
+      standings.length === 0 ? "The host ended the game"
+      : myPlacing === 1 ? "You win! 🎉"
+      : myPlacing ? `You finished ${ORDINALS[myPlacing - 1] ?? `${myPlacing}th`}`
+      : `${nameOf(view, standings[0])} wins`;
+
+    const rows = standings.map((playerId, index) => row(
+      ORDINALS[index] ?? `${index + 1}th`, playerId));
+    // Name the straggler only when exactly one player is still holding
+    // cards; playing first-out-wins, several players never finish.
+    if (standings.length > 0 && standings.length === view.players.length - 1) {
+      const last = view.players.find(p => !standings.includes(p.id));
+      if (last) rows.push(row("last", last.id));
+    }
+    $("result-standings").innerHTML = rows.join("");
+
+    $("again").hidden = !amHost;
+    $("to-lobby").hidden = !amHost;
+    $("result-hint").textContent = amHost ? "" : "waiting for the host to deal again…";
+
+    function row(place, playerId) {
+      const me = playerId === view.viewer ? "me" : "";
+      return `<li class="${me}"><span>${escapeHtml(nameOf(view, playerId))}</span><span class="place">${place}</span></li>`;
     }
   }
 

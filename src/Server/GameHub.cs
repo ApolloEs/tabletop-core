@@ -36,6 +36,12 @@ public sealed class GameHub(RoomRegistry rooms) : Hub
     public Task EndGame()
         => rooms.EndGame(Context.ConnectionId);
 
+    public Task Rematch()
+        => rooms.Rematch(Context.ConnectionId);
+
+    public Task BackToLobby()
+        => rooms.BackToLobby(Context.ConnectionId);
+
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         await rooms.Disconnect(Context.ConnectionId);

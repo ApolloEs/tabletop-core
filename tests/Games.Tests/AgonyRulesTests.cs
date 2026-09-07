@@ -144,14 +144,38 @@ public class AgonyRulesTests
 
         Must(game.TryMove(state, players[1].Id, new DrawCard()));
         Assert.Equal(victimHand + 2, Hand(state, players[1]).Count);
-        Assert.Equal(players[2].Id, state.Turn.ActivePlayer);
         Assert.Equal(0, state.GetZone(AgonyGame.TableZone).GetCounter(AgonyGame.PendingDrawCounter));
+        // Taking the debt does not end the turn — the victim plays on.
+        Assert.Equal(players[1].Id, state.Turn.ActivePlayer);
+    }
+
+    [Fact]
+    public void TakingADebtLeavesANormalTurnToPlayOut()
+    {
+        var state = NewGame(out var players, out var game);
+        SetTop(state, players[0], "red-3");
+        var drawTwo = Give(state, players[0], "red-draw2");
+        Must(game.TryMove(state, players[0].Id, new PlayCard(drawTwo.Id)));
+
+        Must(game.TryMove(state, players[1].Id, new DrawCard()));
+
+        // A full turn remains: the one normal draw is still untouched, and
+        // passing is only legal after taking it.
+        var legal = game.GetLegalMoves(state, players[1].Id);
+        Assert.Contains(new DrawCard(), legal);
+        Assert.DoesNotContain(new PassTurn(), legal);
+        Assert.False(game.TryMove(state, players[1].Id, new PassTurn()).Success);
+
+        Must(game.TryMove(state, players[1].Id, new DrawCard()));
+        Assert.Contains(new PassTurn(), game.GetLegalMoves(state, players[1].Id));
+        Must(game.TryMove(state, players[1].Id, new PassTurn()));
+        Assert.Equal(players[2].Id, state.Turn.ActivePlayer);
     }
 
     [Fact]
     public void DrawTwoStacksWhenTheHouseRuleIsOn()
     {
-        var state = NewGame(out var players, out var game, config: new AgonyConfig { StackDrawTwo = true });
+        var state = NewGame(out var players, out var game, config: new AgonyConfig { StackDrawCards = true });
         SetTop(state, players[0], "red-3");
         var first = Give(state, players[0], "red-draw2");
         var second = Give(state, players[1], "blue-draw2");
@@ -164,6 +188,26 @@ public class AgonyRulesTests
 
         Must(game.TryMove(state, players[2].Id, new DrawCard()));
         Assert.Equal(thirdHand + 4, Hand(state, players[2]).Count);
+    }
+
+    [Fact]
+    public void AWildFourAnswersATwoButNotTheOtherWayAround()
+    {
+        var state = NewGame(out var players, out var game, config: new AgonyConfig { StackDrawCards = true });
+        SetTop(state, players[0], "red-3");
+        var drawTwo = Give(state, players[0], "red-draw2");
+        var wildFour = Give(state, players[1], "wild4");
+        var answeringTwo = Give(state, players[2], "green-draw2");
+
+        // +2 played; the next player answers with a Wild +4, debt 2 -> 6.
+        Must(game.TryMove(state, players[0].Id, new PlayCard(drawTwo.Id)));
+        Assert.Contains(new PlayCard(wildFour.Id, AgonyColor.Green), game.GetLegalMoves(state, players[1].Id));
+        Must(game.TryMove(state, players[1].Id, new PlayCard(wildFour.Id, AgonyColor.Green)));
+        Assert.Equal(6, state.GetZone(AgonyGame.TableZone).GetCounter(AgonyGame.PendingDrawCounter));
+
+        // A mere +2 cannot answer a +4 — only taking it is on offer.
+        Assert.Equal([new DrawCard()], game.GetLegalMoves(state, players[2].Id));
+        Assert.False(game.TryMove(state, players[2].Id, new PlayCard(answeringTwo.Id)).Success);
     }
 
     [Fact]
@@ -252,9 +296,46 @@ public class AgonyRulesTests
 
         Must(game.TryMove(state, players[0].Id, new PlayCard(last.Id)));
 
-        Assert.Equal(players[0].Id, game.GetWinner(state));
+        Assert.Equal([players[0].Id], game.GetStandings(state));
+        Assert.True(game.IsFinished(state));
         Assert.Empty(game.GetLegalMoves(state, players[1].Id));
         Assert.False(game.TryMove(state, players[1].Id, new DrawCard()).Success);
+    }
+
+    [Fact]
+    public void PlayingForPlacingsKeepsGoingUntilOnePlayerIsLeft()
+    {
+        var state = NewGame(out var players, out var game,
+            config: new AgonyConfig { PlayForPlacings = true });
+        GoOut(state, game, players[1], "red-3", "red-8");
+
+        // First out takes 1st place, but with three players the game runs on.
+        Assert.Equal([players[1].Id], game.GetStandings(state));
+        Assert.False(game.IsFinished(state));
+
+        // The seat that went out is stepped over and can no longer move.
+        Assert.Empty(game.GetLegalMoves(state, players[1].Id));
+        Assert.False(game.TryMove(state, players[1].Id, new DrawCard()).Success);
+        Assert.NotEqual(players[1].Id, state.Turn.ActivePlayer);
+
+        // Second one out ends it: one player is left holding cards.
+        GoOut(state, game, players[2], "blue-4", "blue-9");
+        Assert.Equal([players[1].Id, players[2].Id], game.GetStandings(state));
+        Assert.True(game.IsFinished(state));
+    }
+
+    /// <summary>Empties a player's hand down to one playable card, hands them
+    /// the turn, and plays it — the "goes out" position, built through the
+    /// engine's own actions like every other fixture here.</summary>
+    private static void GoOut(GameState state, AgonyGame game, Player player, string topId, string lastId)
+    {
+        foreach (var id in Hand(state, player).ToList())
+            Must(state.Apply(new TabletopCore.Engine.Actions.MoveCardAction(player.Id, id, AgonyGame.DeckZone)));
+        SetTop(state, player, topId);
+        var last = Give(state, player, lastId);
+        while (state.Turn.ActivePlayer != player.Id)
+            Must(state.Apply(new TabletopCore.Engine.Actions.EndTurnAction(state.Turn.ActivePlayer)));
+        Must(game.TryMove(state, player.Id, new PlayCard(last.Id)));
     }
 
     [Fact]

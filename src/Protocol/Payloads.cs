@@ -50,14 +50,16 @@ public sealed record MovePayload(long MoveId, GameMove Move);
 /// <summary>The per-recipient snapshot pushed after every applied move —
 /// a client renders from this alone. Events are that move's redacted slice,
 /// optional flavor for animation. LegalMoves are the viewer's own (empty
-/// when it isn't their turn). Finished covers both endings: a winner, or
-/// the host ending a stalled game (Winner stays null then).</summary>
+/// when it isn't their turn). Standings is the finishing order so far —
+/// first entry the winner, growing to players − 1 when playing for placings,
+/// and empty when the host ends a stalled game. Finished covers every
+/// ending, so a client tests that rather than inspecting standings.</summary>
 public sealed record StatePayload(
     long Version,
     PlayerView View,
     IReadOnlyList<GameMove> LegalMoves,
     IReadOnlyList<GameEvent> Events,
-    PlayerId? Winner,
+    IReadOnlyList<PlayerId> Standings,
     bool Finished);
 
 public sealed record MoveAcceptedPayload(long MoveId, long Version);

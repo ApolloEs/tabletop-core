@@ -8,10 +8,10 @@ namespace TabletopCore.Games.Agony;
 /// API, not as a product (SPEC §12). Rules live here in the module; cards are
 /// inert data. v1 rule simplifications, all deliberate: the first discard is
 /// re-flipped until it is a number card; Wild +4 has no challenge rule and no
-/// "only when you cannot match" restriction; emptying your hand wins
-/// immediately (a final +2's debt is never collected); after drawing you may
-/// play any playable card — the drawn one included — or pass (you just can't
-/// draw twice).
+/// "only when you cannot match" restriction; going out with an action card
+/// does not apply that card's effect (a final +2 collects no debt); after
+/// drawing you may play any playable card — the drawn one included — or pass
+/// (you just can't draw twice).
 /// </summary>
 public sealed class AgonyGame : IGame
 {
@@ -21,12 +21,19 @@ public sealed class AgonyGame : IGame
 
     // Table counters are PUBLIC — everything here is knowledge every player
     // legitimately has (they all saw the draw happen, the color declared,
-    // the debt accumulate). Nothing hand-private may ever live on the table:
-    // a "which card was drawn" counter briefly did, and let opponents tell
-    // "played the drawn card" from "played a card he was holding all along".
+    // the debt accumulate, who went out). Nothing hand-private may ever live
+    // on the table: a "which card was drawn" counter briefly did, and let
+    // opponents tell "played the drawn card" from "played a card held all
+    // along".
     public const string ActiveColorCounter = "activeColor";
     public const string PendingDrawCounter = "pendingDraw";
     public const string HasDrawnCounter = "hasDrawn";
+    public const string FinishedCountCounter = "finishedCount";
+
+    /// <summary>Counter naming the seat that took a given placing. Seats are
+    /// stored +1 because an unset counter reads as 0, which would otherwise
+    /// be indistinguishable from seat 0.</summary>
+    public static string FinishedSeatCounter(int placing) => $"finished:{placing}";
 
     private readonly AgonyConfig _config;
 
@@ -53,6 +60,10 @@ public sealed class AgonyGame : IGame
         state.AddZone(TableZone, ZoneKind.Counter, ZoneVisibility.Public);
         foreach (var player in state.Players.Values.OrderBy(p => p.Seat))
             state.AddZone(HandOf(state, player.Id), ZoneKind.Hand, ZoneVisibility.OwnerOnly, player.Id);
+
+        // Players who have gone out must be stepped over once the game can
+        // outlive the first empty hand.
+        state.TurnSystem = new AgonyTurnSystem();
 
         AgonyDeck.Populate(state, DeckZone, _config.SwapRotateCards);
 
@@ -82,8 +93,10 @@ public sealed class AgonyGame : IGame
 
     public MoveResult TryMove(GameState state, PlayerId player, GameMove move)
     {
-        if (GetWinner(state) is not null)
+        if (IsFinished(state))
             return MoveResult.Rejected("The game is over.");
+        if (HasGoneOut(state, player))
+            return MoveResult.Rejected("You are out — your placing is already settled.");
         if (state.Turn.ActivePlayer != player)
             return MoveResult.Rejected($"It is not {player}'s turn.");
 
@@ -111,10 +124,12 @@ public sealed class AgonyGame : IGame
 
         if (pending > 0)
         {
-            if (!_config.StackDrawTwo)
-                return MoveResult.Rejected($"You must draw {pending}.");
-            if (symbol != AgonyDeck.SymbolDrawTwo || TopSymbol(state) != AgonyDeck.SymbolDrawTwo)
-                return MoveResult.Rejected("Only a +2 can answer a +2.");
+            if (!_config.StackDrawCards)
+                return MoveResult.Rejected($"You must take the {pending} card(s).");
+            if (!CanAnswerPendingDraw(state, symbol))
+                return MoveResult.Rejected(TopSymbol(state) == AgonyDeck.SymbolWildFour
+                    ? "Only a Wild +4 can answer a Wild +4."
+                    : "Only a +2 or a Wild +4 can answer a +2.");
         }
 
         // Having drawn does not narrow what you may play: any playable card
@@ -147,7 +162,19 @@ public sealed class AgonyGame : IGame
         ClearDrawFlags(state, player, table);
 
         if (state.GetZone(HandOf(state, player)).Count > 0)
+        {
             ApplyCardEffect(state, player, symbol, pending);
+        }
+        else
+        {
+            // Going out takes the next placing. Playing for placings, the
+            // rest carry on without this seat — the turn system steps over
+            // empty hands, so ending the turn hands play to the next player
+            // still holding cards.
+            RecordFinished(state, player);
+            if (!IsFinished(state))
+                Must(state.Apply(new EndTurnAction(player)));
+        }
 
         return MoveResult.Applied(EventsSince(state, mark));
     }
@@ -165,7 +192,7 @@ public sealed class AgonyGame : IGame
                     : TurnDirection.Forward;
                 Must(state.Apply(new SetTurnDirectionAction(player, flipped)));
                 // With two players, reverse comes straight back around: a skip.
-                Must(state.Apply(new EndTurnAction(player, Skip: state.Players.Count == 2 ? 1 : 0)));
+                Must(state.Apply(new EndTurnAction(player, Skip: ActiveCount(state) == 2 ? 1 : 0)));
                 break;
             case AgonyDeck.SymbolDrawTwo:
                 Must(state.Apply(new SetCounterAction(player, TableZone, PendingDrawCounter, pending + 2)));
@@ -202,12 +229,14 @@ public sealed class AgonyGame : IGame
             if (available > 0)
                 Must(state.Apply(new DrawAction(player, DeckZone, HandOf(state, player), available)));
             Must(state.Apply(new SetCounterAction(player, TableZone, PendingDrawCounter, 0)));
-            Must(state.Apply(new EndTurnAction(player)));
+            // Collecting does NOT end the turn — the player carries on with a
+            // normal turn: play something now, or draw one and pass. Their
+            // one normal draw is still untouched, so hasDrawn stays clear.
             return MoveResult.Applied(EventsSince(state, mark));
         }
 
         if (table.GetCounter(HasDrawnCounter) == 1)
-            return MoveResult.Rejected("You already drew this turn — play the drawn card or pass.");
+            return MoveResult.Rejected("You already drew this turn — play a card or pass.");
 
         RecycleDiscardIfNeeded(state, player, 1);
         if (state.GetZone(DeckZone).Count == 0)
@@ -226,6 +255,9 @@ public sealed class AgonyGame : IGame
     private static MoveResult TryPass(GameState state, PlayerId player)
     {
         var table = state.GetZone(TableZone);
+        if (table.GetCounter(PendingDrawCounter) > 0)
+            return MoveResult.Rejected("Answer or take the pending draw first.");
+
         bool nothingToDraw = state.GetZone(DeckZone).Count == 0 && state.GetZone(DiscardZone).Count <= 1;
         if (table.GetCounter(HasDrawnCounter) != 1 && !nothingToDraw)
             return MoveResult.Rejected("You must draw (or play) before passing.");
@@ -240,7 +272,7 @@ public sealed class AgonyGame : IGame
 
     public IReadOnlyList<GameMove> GetLegalMoves(GameState state, PlayerId player)
     {
-        if (GetWinner(state) is not null || state.Turn.ActivePlayer != player)
+        if (IsFinished(state) || HasGoneOut(state, player) || state.Turn.ActivePlayer != player)
             return [];
 
         var table = state.GetZone(TableZone);
@@ -249,11 +281,15 @@ public sealed class AgonyGame : IGame
 
         if (table.GetCounter(PendingDrawCounter) > 0)
         {
+            // Taking the debt is always available (the client renders this
+            // as "take +N"); a *normal* draw is not on offer until the debt
+            // is settled. Never auto-taken, even with nothing to answer with
+            // — being forced is still the player's own click.
             moves.Add(new DrawCard());
-            if (_config.StackDrawTwo && TopSymbol(state) == AgonyDeck.SymbolDrawTwo)
+            if (_config.StackDrawCards)
                 moves.AddRange(hand
-                    .Where(id => state.GetValue(id, "symbol").AsString == AgonyDeck.SymbolDrawTwo)
-                    .Select(id => new PlayCard(id)));
+                    .Where(id => CanAnswerPendingDraw(state, state.GetValue(id, "symbol").AsString))
+                    .SelectMany(id => PlayVariants(state, id)));
             return moves;
         }
 
@@ -272,14 +308,34 @@ public sealed class AgonyGame : IGame
         return moves;
     }
 
-    public PlayerId? GetWinner(GameState state)
+    /// <summary>Seats in the order they emptied their hands. One entry means
+    /// a winner; playing for placings this grows to players − 1.</summary>
+    public IReadOnlyList<PlayerId> GetStandings(GameState state)
     {
-        foreach (var player in state.Players.Values.OrderBy(p => p.Seat))
+        if (!state.Zones.TryGetValue(TableZone, out var table))
+            return [];
+
+        int finished = table.GetCounter(FinishedCountCounter);
+        var standings = new List<PlayerId>(finished);
+        for (int placing = 0; placing < finished; placing++)
         {
-            if (state.Zones.TryGetValue(HandOf(state, player.Id), out var hand) && hand.Count == 0)
-                return player.Id;
+            int seat = table.GetCounter(FinishedSeatCounter(placing)) - 1; // stored +1
+            var finisher = state.Players.Values.FirstOrDefault(p => p.Seat == seat);
+            if (finisher is not null)
+                standings.Add(finisher.Id);
         }
-        return null;
+        return standings;
+    }
+
+    public bool IsFinished(GameState state)
+    {
+        if (!state.Zones.TryGetValue(TableZone, out var table))
+            return false;
+
+        int finished = table.GetCounter(FinishedCountCounter);
+        return _config.PlayForPlacings
+            ? finished >= state.Players.Count - 1  // play on until one is left holding cards
+            : finished >= 1;                       // first one out wins, everyone stops
     }
 
     /// <summary>The base matching rule: wilds always; otherwise active color
@@ -294,6 +350,19 @@ public sealed class AgonyGame : IGame
             || state.GetValue(card, "symbol").AsString == TopSymbol(state);
     }
 
+    /// <summary>The stacking ladder: a +2 may be answered with a +2 or a
+    /// Wild +4, but once a +4 is on the table only another +4 stops it — so
+    /// +4 stays the strongest card in the deck.</summary>
+    private static bool CanAnswerPendingDraw(GameState state, string symbol) => TopSymbol(state) switch
+    {
+        AgonyDeck.SymbolWildFour => symbol == AgonyDeck.SymbolWildFour,
+        AgonyDeck.SymbolDrawTwo => symbol is AgonyDeck.SymbolDrawTwo or AgonyDeck.SymbolWildFour,
+        _ => false,
+    };
+
+    private static bool HasGoneOut(GameState state, PlayerId player)
+        => state.GetZone(HandOf(state, player)).Count == 0;
+
     private static IEnumerable<PlayCard> PlayVariants(GameState state, CardInstanceId card)
         => state.GetValue(card, "color").AsString == AgonyDeck.WildColor
             ? Enum.GetValues<AgonyColor>().Select(c => new PlayCard(card, c))
@@ -303,6 +372,15 @@ public sealed class AgonyGame : IGame
         => state.GetValue(state.GetZone(DiscardZone).Cards[^1], "symbol").AsString;
 
     // --- Expansion helpers (public engine actions only) ---
+
+    private static void RecordFinished(GameState state, PlayerId player)
+    {
+        var table = state.GetZone(TableZone);
+        int placing = table.GetCounter(FinishedCountCounter);
+        int seat = state.GetPlayer(player).Seat;
+        Must(state.Apply(new SetCounterAction(player, TableZone, FinishedSeatCounter(placing), seat + 1)));
+        Must(state.Apply(new SetCounterAction(player, TableZone, FinishedCountCounter, placing + 1)));
+    }
 
     private static void ClearDrawFlags(GameState state, PlayerId player, Zone table)
     {
@@ -338,23 +416,38 @@ public sealed class AgonyGame : IGame
 
     private static void RotateHands(GameState state, PlayerId actor)
     {
-        var players = state.Players.Values.OrderBy(p => p.Seat).Select(p => p.Id).ToList();
+        // Targets are worked out from a snapshot before anything moves:
+        // recomputing mid-rotation would read hands that are already half
+        // shuffled around.
+        var players = ActiveBySeat(state);
         var snapshots = players.ToDictionary(p => p, p => state.GetZone(HandOf(state, p)).Cards.ToList());
-        foreach (var player in players)
+        int step = (int)state.Turn.Direction;
+        for (int i = 0; i < players.Count; i++)
         {
-            var target = NextBySeat(state, player);
-            foreach (var id in snapshots[player])
+            var target = players[((i + step) % players.Count + players.Count) % players.Count];
+            foreach (var id in snapshots[players[i]])
                 Must(state.Apply(new MoveCardAction(actor, id, HandOf(state, target))));
         }
     }
 
     private static PlayerId NextBySeat(GameState state, PlayerId player)
     {
-        var players = state.Players.Values.OrderBy(p => p.Seat).ToList();
-        int index = players.FindIndex(p => p.Id == player);
+        var players = ActiveBySeat(state);
+        int index = players.IndexOf(player);
         int step = (int)state.Turn.Direction;
-        return players[((index + step) % players.Count + players.Count) % players.Count].Id;
+        return players[((index + step) % players.Count + players.Count) % players.Count];
     }
+
+    /// <summary>Seat order restricted to players still holding cards — swap
+    /// and rotate must never deal cards back to someone who has gone out.</summary>
+    private static List<PlayerId> ActiveBySeat(GameState state)
+        => state.Players.Values
+            .OrderBy(p => p.Seat)
+            .Where(p => state.GetZone(HandOf(state, p.Id)).Count > 0)
+            .Select(p => p.Id)
+            .ToList();
+
+    private static int ActiveCount(GameState state) => ActiveBySeat(state).Count;
 
     private static IReadOnlyList<Engine.Events.GameEvent> EventsSince(GameState state, int mark)
         => state.EventLog.Skip(mark).ToList();

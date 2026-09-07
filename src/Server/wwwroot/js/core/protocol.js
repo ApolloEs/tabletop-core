@@ -26,6 +26,15 @@ export const CALL = {
   start: "start",
   submitMove: "submitMove",
   endGame: "endGame",
+  rematch: "rematch",
+  backToLobby: "backToLobby",
+};
+
+// Public table counters (see AgonyGame — nothing hand-private lives here).
+export const COUNTER = {
+  activeColor: "activeColor",
+  pendingDraw: "pendingDraw",
+  hasDrawn: "hasDrawn",
 };
 
 // Move discriminators ("type" property, per the golden JSON).
@@ -65,4 +74,14 @@ export function canDraw(game) {
 
 export function canPass(game) {
   return game.legalMoves.some(m => m.type === MOVE.passTurn);
+}
+
+export function pendingDraw(view) {
+  return zoneById(view, "table")?.counters[COUNTER.pendingDraw] ?? 0;
+}
+
+/// 1-based placing of a player who has gone out, else null.
+export function placingOf(game, playerId) {
+  const index = game.standings.indexOf(playerId);
+  return index < 0 ? null : index + 1;
 }

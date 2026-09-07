@@ -148,13 +148,49 @@ input {
 
 #actions { display: flex; gap: 10px; justify-content: center; padding: 0 14px 10px; }
 
+/* --- draw pile + pending debt --- */
+#deck-stack { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.debt-button {
+  background: var(--yellow); color: #211a05;
+  font-weight: 700; border-color: var(--yellow);
+  padding: 10px 14px; min-height: 40px;
+  /* Pulses a shadow, never a transform: a tap target that keeps moving is
+     harder to hit with a thumb (and unclickable to automation). */
+  animation: pulse 1.6s ease-in-out infinite;
+}
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(224, 178, 62, 0.22); } }
+@media (prefers-reduced-motion: reduce) { .debt-button { animation: none; } }
+
+/* Whose turn it is has to be unmistakable: an idle hand is visibly parked,
+   not just "some cards happen to be disabled". */
+#hand.idle { opacity: 0.55; filter: saturate(0.6); }
+
 /* --- overlays --- */
-#picker {
+.overlay {
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.65);
+  background: rgba(0,0,0,0.7);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 24px;
 }
 #picker .pick { width: 64px; height: 64px; border-radius: 50%; border: 3px solid #fff; }
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  width: 100%; max-width: 360px;
+  text-align: center;
+}
+.panel h2 { margin: 0 0 12px; font-size: 1.5rem; }
+.panel ol { list-style: none; margin: 0 0 18px; padding: 0; text-align: left; }
+.panel ol li {
+  display: flex; justify-content: space-between; gap: 12px;
+  padding: 8px 2px; border-bottom: 1px solid var(--line);
+}
+.panel ol li .place { color: var(--muted); }
+.panel ol li.me { color: var(--accent); font-weight: 600; }
+.panel .row { justify-content: center; }
+#result-hint { color: var(--muted); margin: 12px 0 0; min-height: 1.2em; }
 #banner {
   background: var(--yellow); color: #211a05;
   text-align: center; padding: 8px; font-weight: 600;
@@ -164,10 +200,4 @@ input {
   position: fixed; left: 50%; bottom: 170px; transform: translateX(-50%);
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 10px; padding: 10px 16px; max-width: 90%;
-}
-.winner {
-  position: fixed; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  background: rgba(0,0,0,0.7);
-  font-size: 2rem; font-weight: 800; text-align: center; padding: 24px;
 }

@@ -35,6 +35,15 @@ internal sealed record DisconnectCommand(string ConnectionId, TaskCompletionSour
 internal sealed record EndGameCommand(string ConnectionId, TaskCompletionSource<bool> Done)
     : RoomCommand(ConnectionId, Done);
 
+/// <summary>Deal again immediately with the same seats and house rules.</summary>
+internal sealed record RematchCommand(string ConnectionId, TaskCompletionSource<bool> Done)
+    : RoomCommand(ConnectionId, Done);
+
+/// <summary>Return everyone to the lobby, where house rules can change
+/// before the next deal.</summary>
+internal sealed record BackToLobbyCommand(string ConnectionId, TaskCompletionSource<bool> Done)
+    : RoomCommand(ConnectionId, Done);
+
 /// <summary>Posted by the room's own timer, not a client — hence no real
 /// connection. Runs the grace/GC sweep inside the actor like everything
 /// else, so time-driven logic gets the same single-threaded guarantees.</summary>

@@ -39,7 +39,7 @@ public class RegistryTests
         await registry.Join("B", welcome.RoomCode.ToLowerInvariant(), "Bo");
         Assert.Equal(welcome.RoomCode, sender.Last<WelcomePayload>("B").RoomCode);
 
-        await registry.SetConfig("A", new AgonyConfig { StackDrawTwo = true });
-        Assert.True(sender.Last<LobbyPayload>("B").Config.StackDrawTwo);
+        await registry.SetConfig("A", new AgonyConfig { StackDrawCards = true });
+        Assert.True(sender.Last<LobbyPayload>("B").Config.StackDrawCards);
     }
 }

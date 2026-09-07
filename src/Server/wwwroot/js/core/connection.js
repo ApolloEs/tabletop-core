@@ -29,14 +29,18 @@ export function createGameConnection({ signalR, store, storage, baseUrl = "" }) 
   });
   hub.on(ON.lobby, p => store.onLobby(p));
   hub.on(ON.catalog, p => store.onCatalog(p));
-  hub.on(ON.state, p => store.onGameState(p));
+  hub.on(ON.state, p => {
+    // A fresh game (finished -> playing) invalidates any move left in flight
+    // from the previous one, so a rematch never starts out frozen.
+    if (inFlight && store.state.game?.finished && !p.finished) clearInFlight();
+    store.onGameState(p);
+  });
   hub.on(ON.moveAccepted, a => {
-    if (inFlight?.moveId === a.moveId) inFlight = null;
-    store.update({ awaitingAck: false });
+    if (inFlight?.moveId === a.moveId) clearInFlight();
   });
   hub.on(ON.moveRejected, r => {
-    if (inFlight?.moveId === r.moveId) inFlight = null;
-    store.update({ awaitingAck: false, lastError: { code: "moveRejected", message: r.error } });
+    if (inFlight?.moveId === r.moveId) clearInFlight();
+    store.update({ lastError: { code: "moveRejected", message: r.error } });
   });
   hub.on(ON.playerStatus, p => store.onSeatStatus(p));
   hub.on(ON.error, e => store.onError(e));
@@ -55,6 +59,11 @@ export function createGameConnection({ signalR, store, storage, baseUrl = "" }) 
     store.update({ connection: "connecting" });
     await hub.start();
     store.update({ connection: "connected" });
+  }
+
+  function clearInFlight() {
+    inFlight = null;
+    store.update({ awaitingAck: false });
   }
 
   return {
@@ -79,14 +88,30 @@ export function createGameConnection({ signalR, store, storage, baseUrl = "" }) 
     setConfig: config => hub.invoke(CALL.setConfig, config),
     startGame: () => hub.invoke(CALL.start),
     endGame: () => hub.invoke(CALL.endGame),
+    rematch: () => hub.invoke(CALL.rematch),
+    backToLobby: () => hub.invoke(CALL.backToLobby),
 
     /// One move in flight, ids monotonic — refuses (returns false) while a
     /// move is unacked rather than queueing, matching the console client.
+    /// A failed send releases the slot: leaving it held would freeze every
+    /// card in the hand until reload, since the renderer treats an unacked
+    /// move as "inputs busy".
     async submitMove(move) {
       if (inFlight) return false;
       inFlight = { moveId: nextMoveId++, move };
       store.update({ awaitingAck: true });
-      await hub.invoke(CALL.submitMove, inFlight);
+      try {
+        await hub.invoke(CALL.submitMove, inFlight);
+      } catch (error) {
+        // Reconnect resends whatever is still in flight, so a send that
+        // failed because the pipe died stays pending on purpose; anything
+        // else (a rejected invoke) releases the slot.
+        if (hub.state === signalR.HubConnectionState.Connected) {
+          clearInFlight();
+          store.update({ lastError: { code: "sendFailed", message: "That move didn't reach the table — try again." } });
+        }
+        return false;
+      }
       return true;
     },
 

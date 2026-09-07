@@ -31,8 +31,18 @@ public interface IGame
     /// what the server sends so clients never guess.</summary>
     IReadOnlyList<GameMove> GetLegalMoves(GameState state, PlayerId player);
 
-    /// <summary>Null while the game is running.</summary>
-    PlayerId? GetWinner(GameState state);
+    /// <summary>Players who have finished, in finishing order — empty while
+    /// everyone is still in. The first entry is the winner; games that play
+    /// on for placings keep appending. Deliberately a list rather than a
+    /// single winner: "who won" and "who came second" are the same question
+    /// asked at different depths, and a one-winner game is just a game that
+    /// stops after the first entry.</summary>
+    IReadOnlyList<PlayerId> GetStandings(GameState state);
+
+    /// <summary>Whether play has ended. The GAME decides — its own config
+    /// may say "first one out wins" or "keep going until one is left" — so
+    /// the server never needs to know a game's ending rules.</summary>
+    bool IsFinished(GameState state);
 }
 
 public sealed record MoveResult

@@ -30,10 +30,10 @@ public class LeakTests
         var state = new GameState(seed: (ulong)seed);
         for (int i = 0; i < playerCount; i++)
             state.AddPlayer($"Player{i}");
-        var game = new AgonyGame(new AgonyConfig { StackDrawTwo = true, SwapRotateCards = true });
+        var game = new AgonyGame(new AgonyConfig { StackDrawCards = true, SwapRotateCards = true });
         game.Setup(state);
 
-        for (int step = 0; step < 80 && game.GetWinner(state) is null; step++)
+        for (int step = 0; step < 80 && !game.IsFinished(state); step++)
         {
             var actor = state.Turn.ActivePlayer;
             var moves = game.GetLegalMoves(state, actor);

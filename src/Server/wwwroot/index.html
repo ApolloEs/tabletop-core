@@ -30,8 +30,9 @@
     <div id="room-code"></div>
     <ul id="lobby-players"></ul>
     <div id="lobby-config">
-      <label><input type="checkbox" id="cfg-stack"> stack +2 on +2</label>
+      <label><input type="checkbox" id="cfg-stack"> stack draw cards (+2 answers +2, +4 answers anything)</label>
       <label><input type="checkbox" id="cfg-swap"> swap &amp; rotate cards</label>
+      <label><input type="checkbox" id="cfg-placings"> play on for placings (until one player is left)</label>
     </div>
     <button id="start" class="primary" hidden>Deal the cards</button>
     <p id="lobby-hint"></p>
@@ -41,7 +42,10 @@
   <section id="screen-table" hidden>
     <div id="opponents"></div>
     <div id="center">
-      <button id="deck" class="card back"><span id="deck-count"></span></button>
+      <div id="deck-stack">
+        <button id="deck" class="card back"><span id="deck-count"></span></button>
+        <button id="take-debt" class="debt-button" hidden></button>
+      </div>
       <div id="discard"></div>
       <div id="table-info"></div>
     </div>
@@ -54,7 +58,7 @@
   </section>
 
   <!-- Wild color picker -->
-  <div id="picker" hidden>
+  <div id="picker" class="overlay" hidden>
     <p>declare a color</p>
     <div class="row">
       <button class="pick c-red" data-color="red"></button>
@@ -63,6 +67,19 @@
       <button class="pick c-blue" data-color="blue"></button>
     </div>
     <button id="picker-cancel">cancel</button>
+  </div>
+
+  <!-- Result -->
+  <div id="result" class="overlay" hidden>
+    <div class="panel">
+      <h2 id="result-title"></h2>
+      <ol id="result-standings"></ol>
+      <div class="row">
+        <button id="again" class="primary" hidden>Play again</button>
+        <button id="to-lobby" hidden>Back to lobby</button>
+      </div>
+      <p id="result-hint"></p>
+    </div>
   </div>
 
   <div id="toast" hidden></div>

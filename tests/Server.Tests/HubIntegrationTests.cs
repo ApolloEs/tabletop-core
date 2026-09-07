@@ -114,7 +114,7 @@ public sealed class HubIntegrationTests : IAsyncLifetime
         var (ava, bo) = await StartedGame();
         var players = new[] { ava, bo };
 
-        for (int step = 0; step < 600 && ava.State!.Winner is null; step++)
+        for (int step = 0; step < 600 && !ava.State!.Finished; step++)
         {
             var active = players.Single(p => p.State!.View.Turn.ActivePlayer == p.State.View.Viewer
                                              && p.State.LegalMoves.Count > 0);
@@ -128,8 +128,8 @@ public sealed class HubIntegrationTests : IAsyncLifetime
                 $"state v>{version} after step {step}");
         }
 
-        Assert.NotNull(ava.State!.Winner);
-        Assert.Equal(ava.State.Winner, bo.State!.Winner);
+        Assert.Single(ava.State!.Standings);
+        Assert.Equal(ava.State.Standings, bo.State!.Standings);
 
         // The over-the-wire leak sweep: across every state either client ever
         // received, visible hand cards only ever belonged to the viewer.

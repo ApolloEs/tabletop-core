@@ -29,14 +29,15 @@ public static class GameView
 
         lines.Add($"  Discard: {top}   color: {AgonyColors.Name(color)}   direction: {arrow}   deck: {deck.CardCount}");
         if (pending > 0)
-            lines.Add($"  !! pending draw debt: +{pending}");
+            lines.Add($"  !! +{pending} pending — answer it or take the cards");
 
         foreach (var player in view.Players)
         {
             var hand = view.Zones.First(z => z.Owner == player.Id);
             string who = player.Id == view.Viewer ? "you" : player.DisplayName;
             string turn = player.Id == view.Turn.ActivePlayer ? "  ◄ turn" : "";
-            lines.Add($"  {who,-12} {hand.CardCount} card(s){turn}");
+            string placing = PlacingOf(state, player.Id) is { } p ? $"  (finished {Ordinal(p)})" : "";
+            lines.Add($"  {who,-12} {hand.CardCount} card(s){turn}{placing}");
         }
 
         foreach (var gameEvent in state.Events)
@@ -46,10 +47,8 @@ public static class GameView
                 lines.Add($"  · {described}");
         }
 
-        if (state.Winner is { } winner)
-            lines.Add($"  ***** {NameOf(view, winner)} WINS *****");
-        else if (state.Finished)
-            lines.Add("  ***** game ended by the host *****");
+        if (state.Finished)
+            lines.AddRange(RenderResult(state, view));
 
         var myHand = view.Zones.First(z => z.Owner == view.Viewer);
         lines.Add($"  your hand: {string.Join("  ", (myHand.Cards ?? []).Select(c => Name(catalog, c.Definition!.Value)))}");
@@ -58,7 +57,7 @@ public static class GameView
         {
             lines.Add("  your moves:");
             for (int i = 0; i < state.LegalMoves.Count; i++)
-                lines.Add($"    {i + 1}) {Describe(state.LegalMoves[i], view, catalog)}");
+                lines.Add($"    {i + 1}) {Describe(state.LegalMoves[i], view, catalog, pending)}");
         }
         else if (!state.Finished)
         {
@@ -67,13 +66,37 @@ public static class GameView
         return string.Join(Environment.NewLine, lines);
     }
 
+    private static IEnumerable<string> RenderResult(StatePayload state, PlayerView view)
+    {
+        if (state.Standings.Count == 0)
+        {
+            yield return "  ***** the host ended the game *****";
+        }
+        else
+        {
+            yield return "  ***** final placings *****";
+            for (int i = 0; i < state.Standings.Count; i++)
+                yield return $"    {Ordinal(i + 1)}  {NameOf(view, state.Standings[i])}";
+            // Only name a straggler when exactly one player is left holding
+            // cards; in first-out-wins mode several players never finish.
+            if (state.Standings.Count == view.Players.Count - 1)
+            {
+                var last = view.Players.First(p => !state.Standings.Contains(p.Id));
+                yield return $"    last  {NameOf(view, last.Id)}";
+            }
+        }
+        yield return "  host: 'again' to re-deal · 'lobby' to change the rules first";
+    }
+
     public static string Describe(
         GameMove move,
         PlayerView view,
-        IReadOnlyDictionary<CardDefinitionId, CardCatalogEntry> catalog) => move switch
+        IReadOnlyDictionary<CardDefinitionId, CardCatalogEntry> catalog,
+        int pending = 0) => move switch
     {
         PlayCard play => $"play {NameOfCard(view, catalog, play.Card)}"
             + (play.DeclaredColor is { } declared ? $" declaring {AgonyColors.Name(declared)}" : ""),
+        DrawCard when pending > 0 => $"TAKE the +{pending}",
         DrawCard => "draw",
         PassTurn => "pass",
         _ => move.GetType().Name,
@@ -85,6 +108,21 @@ public static class GameView
         TurnSkipped skipped => $"{NameOf(view, skipped.Player)} was skipped",
         TurnDirectionChanged changed => $"direction is now {(changed.Direction == TurnDirection.Forward ? "→" : "←")}",
         _ => null, // everything else is visible in the snapshot itself
+    };
+
+    /// <summary>1-based placing of a player who has gone out, else null.</summary>
+    private static int? PlacingOf(StatePayload state, PlayerId player)
+    {
+        int index = state.Standings.ToList().IndexOf(player);
+        return index < 0 ? null : index + 1;
+    }
+
+    private static string Ordinal(int placing) => placing switch
+    {
+        1 => "1st",
+        2 => "2nd",
+        3 => "3rd",
+        _ => $"{placing}th",
     };
 
     private static string Name(IReadOnlyDictionary<CardDefinitionId, CardCatalogEntry> catalog, CardDefinitionId id)

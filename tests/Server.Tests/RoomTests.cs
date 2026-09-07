@@ -59,14 +59,14 @@ public class RoomTests
         await room.Join("A", "Ava");
         await room.Join("B", "Bo");
 
-        Assert.False(await room.SetConfig("B", new AgonyConfig { StackDrawTwo = true }));
+        Assert.False(await room.SetConfig("B", new AgonyConfig { StackDrawCards = true }));
         Assert.Equal("hostOnly", sender.Last<ErrorPayload>("B").Code);
 
         Assert.False(await room.Start("B"));
         Assert.Equal("hostOnly", sender.Last<ErrorPayload>("B").Code);
 
-        Assert.True(await room.SetConfig("A", new AgonyConfig { StackDrawTwo = true }));
-        Assert.True(sender.Last<LobbyPayload>("B").Config.StackDrawTwo);
+        Assert.True(await room.SetConfig("A", new AgonyConfig { StackDrawCards = true }));
+        Assert.True(sender.Last<LobbyPayload>("B").Config.StackDrawCards);
     }
 
     [Fact]
@@ -123,7 +123,7 @@ public class RoomTests
         for (int step = 0; step < 1000; step++)
         {
             var latest = sender.Last<StatePayload>("A");
-            if (latest.Winner is not null)
+            if (latest.Finished)
                 break;
 
             string active = ActiveConnection(sender);
@@ -135,8 +135,10 @@ public class RoomTests
                 $"step {step}: move was not accepted");
         }
 
-        Assert.NotNull(sender.Last<StatePayload>("A").Winner);
-        Assert.NotNull(sender.Last<StatePayload>("B").Winner);
+        Assert.Single(sender.Last<StatePayload>("A").Standings);
+        Assert.Equal(
+            sender.Last<StatePayload>("A").Standings,
+            sender.Last<StatePayload>("B").Standings);
 
         // Sweep every state ever sent: a hand zone with cards visible must
         // belong to the connection's own viewer.

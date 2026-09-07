@@ -95,12 +95,67 @@ public class RoomLifecycleTests
         Assert.True(await f.Room.EndGame("A"));
         var state = f.Sender.Last<StatePayload>("A");
         Assert.True(state.Finished);
-        Assert.Null(state.Winner);
+        Assert.Empty(state.Standings);   // ended, but nobody actually went out
         Assert.Empty(state.LegalMoves);
 
         // A move after the end is still *handled* — with a rejection.
         Assert.True(await f.Room.SubmitMove("A", new MovePayload(99, new DrawCard())));
         Assert.Equal(99, f.Sender.Last<MoveRejectedPayload>("A").MoveId);
+    }
+
+    [Fact]
+    public async Task AFinishedGameCanBeDealtAgainWithTheSameSeats()
+    {
+        var f = await StartedGame();
+        await f.Room.EndGame("A");
+        long finishedVersion = f.Sender.Last<StatePayload>("A").Version;
+
+        Assert.True(await f.Room.Rematch("A"));
+
+        var fresh = f.Sender.Last<StatePayload>("A");
+        Assert.False(fresh.Finished);
+        Assert.Empty(fresh.Standings);
+        Assert.Equal(7, fresh.View.Zones.Single(z => z.Owner == fresh.View.Viewer).Cards!.Count);
+        // The version must keep climbing across games: clients ignore states
+        // older than the one they rendered, so a reset would make the new
+        // deal invisible to everyone still looking at the old result.
+        Assert.True(fresh.Version > finishedVersion, "rematch version did not advance");
+        Assert.Equal(1, f.Sender.Last<WelcomePayload>("B").Seat);
+    }
+
+    [Fact]
+    public async Task AFinishedGameCanReopenTheLobbyWhereRulesChange()
+    {
+        var f = await StartedGame();
+        await f.Room.EndGame("A");
+
+        Assert.True(await f.Room.BackToLobby("A"));
+        Assert.Equal(2, f.Sender.Last<LobbyPayload>("B").Players.Count);
+
+        // House rules are lobby-only, so reopening it is what makes them
+        // reachable between hands.
+        Assert.True(await f.Room.SetConfig("A", new AgonyConfig { PlayForPlacings = true }));
+        Assert.True(f.Sender.Last<LobbyPayload>("B").Config.PlayForPlacings);
+
+        Assert.True(await f.Room.Start("A"));
+        Assert.False(f.Sender.Last<StatePayload>("A").Finished);
+    }
+
+    [Fact]
+    public async Task RematchAndLobbyAreHostOnlyAndOnlyOnceFinished()
+    {
+        var f = await StartedGame();
+
+        Assert.False(await f.Room.Rematch("A"));       // still running
+        Assert.Equal("notFinished", f.Sender.Last<ErrorPayload>("A").Code);
+        Assert.False(await f.Room.BackToLobby("A"));
+        Assert.Equal("notFinished", f.Sender.Last<ErrorPayload>("A").Code);
+
+        await f.Room.EndGame("A");
+        Assert.False(await f.Room.Rematch("B"));       // not the host
+        Assert.Equal("hostOnly", f.Sender.Last<ErrorPayload>("B").Code);
+        Assert.False(await f.Room.BackToLobby("B"));
+        Assert.Equal("hostOnly", f.Sender.Last<ErrorPayload>("B").Code);
     }
 
     [Fact]

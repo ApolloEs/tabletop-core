@@ -83,6 +83,12 @@ public sealed class RoomRegistry(IClientSender sender, TimeProvider? time = null
     public Task EndGame(string connectionId)
         => WithRoom(connectionId, room => room.EndGame(connectionId));
 
+    public Task Rematch(string connectionId)
+        => WithRoom(connectionId, room => room.Rematch(connectionId));
+
+    public Task BackToLobby(string connectionId)
+        => WithRoom(connectionId, room => room.BackToLobby(connectionId));
+
     public async Task Disconnect(string connectionId)
     {
         if (_byConnection.TryRemove(connectionId, out var room))

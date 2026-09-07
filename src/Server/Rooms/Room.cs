@@ -98,6 +98,12 @@ public sealed class Room
     public Task<bool> EndGame(string connectionId)
         => Post(done => new EndGameCommand(connectionId, done));
 
+    public Task<bool> Rematch(string connectionId)
+        => Post(done => new RematchCommand(connectionId, done));
+
+    public Task<bool> BackToLobby(string connectionId)
+        => Post(done => new BackToLobbyCommand(connectionId, done));
+
     private Task<bool> Post(Func<TaskCompletionSource<bool>, RoomCommand> make)
     {
         var done = NewDone();
@@ -123,6 +129,8 @@ public sealed class Room
                     SubmitMoveCommand c => await HandleSubmitMove(c),
                     DisconnectCommand c => await HandleDisconnect(c),
                     EndGameCommand c => await HandleEndGame(c),
+                    RematchCommand c => await HandleRematch(c),
+                    BackToLobbyCommand c => await HandleBackToLobby(c),
                     SweepCommand => await HandleSweep(),
                     _ => false,
                 };
@@ -219,6 +227,48 @@ public sealed class Room
         if (_sessions.Count < 2)
             return await Fail(c, "needPlayers", "Agony needs at least 2 players.");
 
+        await Deal();
+        return true;
+    }
+
+    private async Task<bool> HandleRematch(RematchCommand c)
+    {
+        if (FindByConnection(c.ConnectionId) is not { } session)
+            return await Fail(c, "notInRoom", "Join a room first.");
+        if (!session.IsHost)
+            return await Fail(c, "hostOnly", "Only the host deals a rematch.");
+        if (Phase != RoomPhase.Finished)
+            return await Fail(c, "notFinished", "This game is still running.");
+        if (_sessions.Count < 2)
+            return await Fail(c, "needPlayers", "Agony needs at least 2 players.");
+
+        await Deal();
+        return true;
+    }
+
+    private async Task<bool> HandleBackToLobby(BackToLobbyCommand c)
+    {
+        if (FindByConnection(c.ConnectionId) is not { } session)
+            return await Fail(c, "notInRoom", "Join a room first.");
+        if (!session.IsHost)
+            return await Fail(c, "hostOnly", "Only the host can reopen the lobby.");
+        if (Phase != RoomPhase.Finished)
+            return await Fail(c, "notFinished", "This game is still running.");
+
+        Phase = RoomPhase.Lobby;
+        _game = null;
+        _state = null;
+        await BroadcastLobby();
+        return true;
+    }
+
+    /// <summary>Fresh seed, fresh GameState, same seats — shared by the first
+    /// deal and every rematch. The version counter deliberately keeps
+    /// climbing across games: clients discard any state older than the one
+    /// they last rendered, so restarting it at 1 would make a rematch
+    /// invisible to everyone still on the previous game's screen.</summary>
+    private async Task Deal()
+    {
         _state = new GameState(seed: _seedSource());
         foreach (var s in _sessions)
             s.PlayerId = _state.AddPlayer(s.DisplayName).Id;
@@ -226,7 +276,7 @@ public sealed class Room
         _game = new AgonyGame(_config);
         _game.Setup(_state);
         Phase = RoomPhase.Playing;
-        _version = 1;
+        _version++;
 
         var catalog = CardCatalog.From(_state);
         foreach (var s in ConnectedSessions())
@@ -234,7 +284,6 @@ public sealed class Room
             await _sender.SendAsync(s.ConnectionId!, Wire.Catalog, catalog);
             await _sender.SendAsync(s.ConnectionId!, Wire.State, BuildState(s, []));
         }
-        return true;
     }
 
     private async Task<bool> HandleSubmitMove(SubmitMoveCommand c)
@@ -270,7 +319,7 @@ public sealed class Room
         session.LastMoveReply = reply;
         await _sender.SendAsync(c.ConnectionId, Wire.MoveAccepted, reply);
 
-        if (_game.GetWinner(_state!) is not null)
+        if (_game.IsFinished(_state!))
             Phase = RoomPhase.Finished;
 
         foreach (var s in ConnectedSessions())
@@ -364,7 +413,7 @@ public sealed class Room
             StateProjector.ProjectFor(_state!, viewer.PlayerId),
             Phase == RoomPhase.Finished ? [] : _game!.GetLegalMoves(_state!, viewer.PlayerId),
             EventProjector.ProjectFor(rawEvents, viewer.PlayerId),
-            _game!.GetWinner(_state!),
+            _game!.GetStandings(_state!),
             Finished: Phase == RoomPhase.Finished);
 
     private Task SendWelcome(Session session)
