@@ -8,10 +8,15 @@ import {
 } from "./core/protocol.js";
 
 const COLORS = ["red", "yellow", "green", "blue"];
+// Swap-hands and reverse are different card types that do NOT stack on each
+// other, so their icons must not look alike: a hand plus vertical arrows for
+// hands changing owner, horizontal arrows for play order turning around.
 const GLYPHS = {
   skip: "⊘", reverse: "⇄", draw2: "+2",
-  swap: "⇆", rotate: "⟳", wild: "✦", wild4: "+4",
+  swap: "✋⇅", rotate: "⟳", wild: "✦", wild4: "+4",
 };
+// Glyphs made of two characters need to come down a size to fit the face.
+const WIDE_GLYPHS = new Set(["swap"]);
 const ORDINALS = ["1st", "2nd", "3rd"];
 
 const $ = id => document.getElementById(id);
@@ -141,25 +146,26 @@ export function initRenderer(store, connection) {
     const busy = sending || game.finished || !mine;
     const pending = pendingDraw(view);
 
-    // Opponents strip (everyone but me, seat order).
-    $("opponents").innerHTML = view.players
-      .filter(p => p.id !== view.viewer)
+    // Every seat in seat order — the viewer included and highlighted — with
+    // the play direction shown between them, so "who goes next" is readable
+    // instead of something you work out.
+    const flow = view.turn.direction === "forward" ? "→" : "←";
+    $("seats").innerHTML = view.players
       .map(p => {
         const status = seatStatus.get(p.seat) ?? { connected: true, abandoned: false };
         const dot = status.abandoned ? "gone" : status.connected ? "" : "off";
-        const active = p.id === view.turn.activePlayer && !game.finished ? "active" : "";
+        const classes = ["seat",
+          p.id === view.turn.activePlayer && !game.finished ? "active" : "",
+          p.id === view.viewer ? "you" : ""].filter(Boolean).join(" ");
         const placing = placingOf(game, p.id);
         const count = placing ? ORDINALS[placing - 1] ?? `${placing}th` : handCountOf(view, p.id);
-        return `<div class="opponent ${active}">
+        return `<div class="${classes}">
           <span class="dot ${dot}"></span>
           <span>${escapeHtml(p.displayName)}</span>
           <span class="count">${count}</span>
         </div>`;
-      }).join("");
-
-    // Center: deck, discard top, table info.
-    const deck = zoneById(view, "deck");
-    $("deck-count").textContent = deck.cardCount;
+      })
+      .join(`<span class="flow" aria-hidden="true">${flow}</span>`);
 
     // Facing a debt, the normal draw is blocked and replaced by an explicit
     // "take" button that names the price — never auto-taken, even when the
@@ -174,12 +180,11 @@ export function initRenderer(store, connection) {
     const top = discard.cards?.at(-1);
     $("discard").innerHTML = top ? cardFace(catalog.get(top.definition), "") : "";
 
+    // Direction now lives up in the seat strip, where it answers "who next?".
     const table = zoneById(view, "table");
     const activeColor = COLORS[table.counters[COUNTER.activeColor] ?? 0];
-    const arrow = view.turn.direction === "forward" ? "↻" : "↺";
     $("table-info").innerHTML = `
       <span class="info-chip"><span class="swatch c-${activeColor}"></span>${activeColor}</span>
-      <span class="info-chip">${arrow} play direction</span>
       ${pending > 0 ? `<span class="info-chip debt">+${pending} pending</span>` : ""}`;
 
     // Turn banner — the single clearest signal on the screen.
@@ -244,8 +249,10 @@ export function initRenderer(store, connection) {
     if (entry.faceImage) // custom decks: the face is just a URL
       return `<button class="card ${extraClass}" ${attrs} ${disabled ? "disabled" : ""}><img src="${entry.faceImage}" alt="${escapeHtml(entry.name)}"></button>`;
     const color = entry.properties.color === "wild" ? "wild" : entry.properties.color;
-    const glyph = entry.properties.number ?? GLYPHS[entry.properties.symbol] ?? "?";
-    return `<button class="card c-${color} ${extraClass}" ${attrs} ${disabled ? "disabled" : ""} aria-label="${escapeHtml(entry.name)}">${glyph}</button>`;
+    const symbol = entry.properties.symbol;
+    const glyph = entry.properties.number ?? GLYPHS[symbol] ?? "?";
+    const wide = WIDE_GLYPHS.has(symbol) ? " wide-glyph" : "";
+    return `<button class="card c-${color}${wide} ${extraClass}" ${attrs} ${disabled ? "disabled" : ""} aria-label="${escapeHtml(entry.name)}">${glyph}</button>`;
   }
 
   function handCountOf(view, playerId) {

@@ -211,6 +211,56 @@ public class AgonyRulesTests
     }
 
     [Fact]
+    public void ReverseStacksOnReverseInAnyColour()
+    {
+        var state = NewGame(out var players, out var game, playerCount: 2);
+        SetTop(state, players[0], "red-3");
+        var first = Give(state, players[0], "red-reverse");     // matches by colour
+        var second = Give(state, players[0], "yellow-reverse"); // matches by symbol only
+
+        Must(game.TryMove(state, players[0].Id, new PlayCard(first.Id)));
+
+        // Two players: a reverse comes straight back around, so it is the
+        // same player's turn again and their other reverse matches by symbol
+        // even though the colour changed.
+        Assert.Equal(players[0].Id, state.Turn.ActivePlayer);
+        Assert.Contains(new PlayCard(second.Id), game.GetLegalMoves(state, players[0].Id));
+        Must(game.TryMove(state, players[0].Id, new PlayCard(second.Id)));
+    }
+
+    [Fact]
+    public void TheNextPlayerCanAnswerAReverseWithTheirOwn()
+    {
+        var state = NewGame(out var players, out var game, playerCount: 3);
+        SetTop(state, players[0], "red-3");
+        var mine = Give(state, players[0], "red-reverse");
+        var theirs = Give(state, players[2], "blue-reverse");
+
+        Must(game.TryMove(state, players[0].Id, new PlayCard(mine.Id)));
+
+        // Direction is now reversed, so play runs 0 -> 2.
+        Assert.Equal(players[2].Id, state.Turn.ActivePlayer);
+        Assert.Contains(new PlayCard(theirs.Id), game.GetLegalMoves(state, players[2].Id));
+    }
+
+    [Fact]
+    public void SwapHandsAndReverseDoNotStackOnEachOther()
+    {
+        // Two genuinely different card types: only a shared colour connects
+        // them. Which is exactly why their icons must not look alike.
+        var state = NewGame(out var players, out var game, playerCount: 2,
+            config: new AgonyConfig { SwapRotateCards = true });
+        SetTop(state, players[0], "red-3");
+        var reverse = Give(state, players[0], "red-reverse");
+        var swap = Give(state, players[0], "yellow-swap");
+
+        Must(game.TryMove(state, players[0].Id, new PlayCard(reverse.Id)));
+
+        Assert.Equal(players[0].Id, state.Turn.ActivePlayer);
+        Assert.DoesNotContain(new PlayCard(swap.Id), game.GetLegalMoves(state, players[0].Id));
+    }
+
+    [Fact]
     public void AFruitlessDrawNeverPassesTheTurnByItself()
     {
         // The anti-tell rule: an automatic pass that fires when nothing is

@@ -85,11 +85,11 @@ input {
 
 /* --- table --- */
 #screen-table { flex: 1; display: flex; flex-direction: column; padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
-#opponents {
-  display: flex; gap: 10px; overflow-x: auto;
+#seats {
+  display: flex; align-items: center; gap: 8px; overflow-x: auto;
   padding: 12px 14px;
 }
-.opponent {
+.seat {
   flex: none;
   display: flex; align-items: center; gap: 8px;
   background: var(--surface);
@@ -97,8 +97,13 @@ input {
   border-radius: 999px;
   padding: 8px 14px;
 }
-.opponent.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.opponent .count { font-weight: 700; }
+/* Whose turn it is (border) and which seat is mine (tint) are different
+   facts, so they get different signals and can show at once. */
+.seat.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.seat.you { background: rgba(88, 192, 141, 0.18); color: var(--accent); font-weight: 600; }
+.seat .count { font-weight: 700; }
+/* Play direction, between the seats it applies to. */
+.flow { flex: none; color: var(--muted); font-size: 1.1rem; }
 
 #center {
   flex: 1;
@@ -128,7 +133,14 @@ input {
   padding: 0;
 }
 .card img { width: 100%; height: 100%; object-fit: cover; border-radius: 8px; }
-.card.back { background: repeating-linear-gradient(135deg, #263a2f 0 8px, #1d2c24 8px 16px); color: var(--ink); font-size: 1rem; }
+.card.back { background: repeating-linear-gradient(135deg, #263a2f 0 8px, #1d2c24 8px 16px); color: var(--ink); }
+/* The remaining count is noise — the pile is reshuffled from the discard
+   when it runs out, so the number never means "the game is nearly over". */
+.pile-label { font-size: 0.8rem; font-weight: 700; letter-spacing: 0.14em; color: var(--muted); }
+/* Two-character faces (the hand + arrows on a swap) need a size of their own
+   to fill the face without overflowing it. */
+.card.wide-glyph { font-size: 1.45rem; letter-spacing: -0.04em; }
+#discard .card.wide-glyph { font-size: 1.85rem; }
 .c-red { background: var(--red); }
 .c-yellow { background: var(--yellow); }
 .c-green { background: var(--green); }
