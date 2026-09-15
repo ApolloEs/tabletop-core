@@ -1,6 +1,9 @@
 # Custom card content — local-only per clone, never committed (L15)
 content/
 
+# Claude Code working docs — local-only; the public design write-up lives elsewhere
+.claude/
+
 # Build output
 bin/
 obj/
