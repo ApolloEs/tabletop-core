@@ -15,6 +15,8 @@ dotnet run --project clients/console -- create Ava
 dotnet run --project clients/console -- join ABCD Bo --server http://localhost:5199
 ```
 
+For why the project is shaped this way — the constraint that picked the web, the layering rules, hidden information, and the open questions — see [docs/DESIGN.md](docs/DESIGN.md).
+
 ---
 
 ## Architecture
@@ -112,5 +114,11 @@ clients/console   over-the-wire terminal client, one per player
 tests/            Engine, Games, Protocol, Server
 content/          custom decks — gitignored from the first commit, local per clone
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE). The one vendored third-party file, the SignalR browser client, is MIT too; its notice is in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+---
 
 `content/` is gitignored deliberately and from day one: the code is meant to go public, the photos friends put on their custom cards are not, and that split has to be real before the repo is ever public so there is no history to scrub.
